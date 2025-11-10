@@ -1,5 +1,13 @@
 // devdiag.ts - TypeScript client SDK for mcp-devdiag
-// Usage: Copy to your project and install: npm install zod
+// 
+// Installation required:
+//   npm install zod
+// 
+// Usage:
+//   Copy to your project, install dependencies, then:
+//   import { statusPlus, quickcheck } from './devdiag';
+//   const client = { baseUrl: "https://diag.example.com", jwt: process.env.DEVDIAG_JWT! };
+//   const result = await statusPlus(client, "https://app.example.com", "full");
 
 import { z } from "zod";
 

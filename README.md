@@ -343,6 +343,7 @@ npx quicktype -s schema -o src/types/devdiag.ts mcp_devdiag/schemas/probe_result
 
 Or use the ready-made SDK:
 ```typescript
+// Install dependencies first: npm install zod
 // See docs/examples/devdiag.ts
 import { statusPlus, quickcheck } from './devdiag';
 
