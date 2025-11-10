@@ -527,6 +527,64 @@ curl -s -X POST "$BASE/mcp/devdiag/export_snapshot" \
 
 Exports are automatically redacted (no headers, bodies, or auth tokens) and encrypted with AES256-SSE.
 
+### Closed-Loop Learning
+
+DevDiag includes **closed-loop learning** to automatically learn which fixes work in which environments. When enabled:
+
+- Every diagnostic run is recorded (problems, evidence, environment fingerprint)
+- When a problem disappears after a fix, DevDiag credits that fix with success
+- Future suggestions rank fixes by **confidence score** (support × environment similarity)
+
+**Configuration** (`devdiag.yaml`):
+
+```yaml
+learn:
+  enabled: true
+  store: "sqlite:///devdiag.db"      # or PostgreSQL connection string
+  privacy:
+    hash_targets: true                # hash URLs to target_hash (privacy-first)
+    keep_evidence_keys: ["csp", "xfo", "framework", "server", "routes"]
+  retention_days: 180                 # data retention (default 6 months)
+  min_support: 2                      # min fix successes before suggesting
+  alpha: 0.6                          # confidence α for support scaling
+  beta: 0.7                           # confidence β for similarity weighting
+```
+
+**Privacy Guarantees**:
+
+- ✅ **No bodies or secrets stored** - only safe evidence keys (CSP, framework, etc.)
+- ✅ **Target URLs hashed** when `hash_targets: true` (default)
+- ✅ **No request/response data** - only problem codes and fix recipes
+- ✅ **Tenant isolation** - each tenant's learning data is separate
+- ✅ **Configurable retention** - auto-purge old data (default 180 days)
+
+**How it works**:
+
+1. **Record**: Every `diag_status_plus()` call records problems + environment
+2. **Detect**: If problems disappear on next run, credit the applied fix
+3. **Learn**: Build confidence scores based on:
+   - **Support** - how many times this fix worked
+   - **Similarity** - how similar the current environment is to past successes
+4. **Suggest**: Rank fixes by confidence when same problem appears again
+
+**Example usage**:
+
+```python
+# status_plus automatically records runs when learning is enabled
+result = await diag_status_plus(base_url="https://app.example.com", preset="chat")
+
+# Manually query suggestions for a specific problem
+from mcp_devdiag.tools_learn import learn_suggest
+suggestions = await learn_suggest(
+    problem_code="CSP_INLINE_BLOCKED",
+    evidence={"framework": "react@18.3.1", "xfo": "DENY"},
+    tenant="my-app"
+)
+# Returns: [{"fix_code": "FIX_CSP_NONCE", "confidence": 0.85, "support": 12}, ...]
+```
+
+**Opt-out**: Set `learn.enabled: false` to disable learning. No data is collected when disabled.
+
 ## Suggested Next Steps (Optional)
 
 Future enhancements to consider:

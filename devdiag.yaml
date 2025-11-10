@@ -27,6 +27,18 @@ shipping:
   otlp_endpoint: "http://otel-collector:4318"
   s3_bucket: "s3://diag-bundles/tasteos/"
 
+# Closed-loop learning configuration
+learn:
+  enabled: true
+  store: "sqlite:///devdiag.db"      # or "postgresql+psycopg://user:pass@host/db"
+  privacy:
+    hash_targets: true               # hash base_url to target_hash
+    keep_evidence_keys: ["csp", "xfo", "framework", "server", "routes"]
+  retention_days: 180
+  min_support: 2
+  alpha: 0.6                         # confidence α for support
+  beta: 0.7                          # confidence β for similarity
+
 # Generalized diagnostic probe configuration
 diag:
   # Portal root selectors for frameworks (Next.js, React portals, etc.)
