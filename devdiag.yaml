@@ -25,3 +25,50 @@ redaction:
 shipping:
   otlp_endpoint: "http://otel-collector:4318"
   s3_bucket: "s3://diag-bundles/tasteos/"
+
+# Generalized diagnostic probe configuration
+diag:
+  # Portal root selectors for frameworks (Next.js, React portals, etc.)
+  portal_roots:
+    - "#__PORTAL_ROOT__"
+    - "#toast-root"
+    - "#__NEXT_PORTAL__"
+    - "#portal"
+
+  # Overlay detection thresholds (fraction of viewport)
+  overlay_min_width_pct: 0.85
+  overlay_min_height_pct: 0.50
+
+  # Additional selectors for overlay detection
+  overlay_selectors:
+    - "[data-overlay]"
+    - ".modal-backdrop"
+    - ".app-overlay"
+    - "[role='dialog']"
+
+  # Expected iframe configuration
+  iframe_expected:
+    - id: "chat-frame"
+      sandbox_must_not_include: ["allow-same-origin"]
+      ready_message: "ready"
+
+  # Embed handshake configuration
+  handshake:
+    message_types: ["chat:ready", "widget:ready", "embed:ready"]
+    timeout_ms: 3000
+
+  # Framework detection patterns (console log regex)
+  framework:
+    detect_console_regex:
+      react: "\\[boot\\].*react .* react-dom|React.*version|react@"
+      vue: "Vue.*version|vue@"
+      svelte: "Svelte|svelte@"
+      angular: "Angular.*version|@angular"
+      nextjs: "Next\\.js|next@"
+
+  # CSP validation rules
+  csp:
+    must_include:
+      - directive: "frame-ancestors"
+        any_of: ["'self'", "https://*.tasteos.app"]
+    forbidden_xfo: ["DENY"]

@@ -1,0 +1,220 @@
+# mcp_devdiag/tools_diag.py
+"""MCP tool handlers for generalized diagnostic probes."""
+
+from typing import Optional
+import httpx
+from fastmcp import FastMCP
+
+from .config import load_config
+from .probes.adapters import get_driver
+from .probes import (
+    dom_overlays,
+    csp_headers,
+    handshake,
+    framework_versions,
+    csp_inline,
+    bundle,
+)
+
+# Initialize MCP app
+mcp = FastMCP("DevDiag Probes")
+
+# Load configuration
+CONFIG = load_config()
+
+
+def http_client_factory():
+    """Create HTTP client for driver."""
+    return httpx.AsyncClient()
+
+
+@mcp.tool()
+async def diag_bundle(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Run curated set of diagnostic probes based on presets.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type ("http", "playwright", "puppeteer", "selenium") or None for auto-detect
+
+    Returns:
+        Aggregated problems, remediation, and evidence from all probes
+    """
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        return await bundle.run_bundle(drv, url, {"diag": CONFIG.__dict__.get("diag", {})})
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_dom_overlays(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Detect DOM overlays that may block embedded content.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type or None for auto-detect (requires browser for DOM inspection)
+
+    Returns:
+        Problems, evidence, and remediation for overlay issues
+    """
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        return await dom_overlays.run(drv, url, CONFIG.__dict__.get("diag", {}))
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_csp_headers(url: str) -> dict:
+    """
+    Validate Content Security Policy and X-Frame-Options headers.
+
+    Args:
+        url: Target URL to probe
+
+    Returns:
+        Problems, evidence, and remediation for CSP/XFO issues
+    """
+    drv = await get_driver("http", http_client_factory)
+    try:
+        csp_cfg = CONFIG.__dict__.get("diag", {}).get("csp", {})
+        return await csp_headers.run(drv, url, csp_cfg)
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_chat_handshake(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Detect generic embed/iframe ready handshake signals.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type or None for auto-detect (requires browser for postMessage)
+
+    Returns:
+        Problems, evidence, and remediation for handshake issues
+    """
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        handshake_cfg = CONFIG.__dict__.get("diag", {}).get("handshake", {})
+        return await handshake.run(drv, url, handshake_cfg)
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_framework_versions(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Auto-detect React/Vue/Svelte/Angular framework versions from console.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type or None for auto-detect (requires browser for console logs)
+
+    Returns:
+        Problems, evidence, and remediation for framework version issues
+    """
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        framework_cfg = CONFIG.__dict__.get("diag", {}).get("framework", {})
+        return await framework_versions.run(drv, url, framework_cfg)
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_csp_inline(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Detect CSP inline script violations.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type or None for auto-detect (requires browser for console errors)
+
+    Returns:
+        Problems, evidence, and remediation for inline script violations
+    """
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        return await csp_inline.run(drv, url, CONFIG.__dict__.get("diag", {}))
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_iframes(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Validate iframe sandbox and permissions.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type or None for auto-detect
+
+    Returns:
+        Problems, evidence, and remediation for iframe issues
+    """
+    # TODO: Implement iframe-specific probe
+    # For now, delegate to bundle which includes CSP checks
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        return {
+            "problems": [],
+            "evidence": {"note": "iframe probe not yet implemented; use diag_bundle"},
+            "remediation": [],
+        }
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_probe_portal_root(url: str, driver: Optional[str] = None) -> dict:
+    """
+    Check for portal root container existence.
+
+    Args:
+        url: Target URL to probe
+        driver: Driver type or None for auto-detect (requires browser for DOM inspection)
+
+    Returns:
+        Problems, evidence, and remediation for portal root issues
+    """
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        if drv.name == "http":
+            return {
+                "problems": [],
+                "evidence": {"note": "http-only; portal detection requires browser"},
+                "remediation": [],
+            }
+
+        portal_roots = CONFIG.__dict__.get("diag", {}).get("portal_roots", [])
+        js = f"""
+        (() => {{
+            const selectors = {portal_roots};
+            const found = selectors.map(sel => {{
+                const el = document.querySelector(sel);
+                return {{ selector: sel, exists: !!el }};
+            }});
+            return found;
+        }})();
+        """
+
+        evidence = await drv.eval_js(js)
+        problems = []
+        remediation = []
+
+        if not any(item["exists"] for item in evidence):
+            problems.append("PORTAL_ROOT_MISSING")
+            remediation.extend(
+                [
+                    f"Ensure a portal container exists: {', '.join(portal_roots)}",
+                    "Create portal root programmatically at boot if missing.",
+                ]
+            )
+
+        return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    finally:
+        await drv.dispose()
