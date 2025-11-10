@@ -1,0 +1,72 @@
+{
+  "uid": "devdiag-alert-runs-stalled",
+  "title": "DevDiag: Diagnostic runs stalled (2h)",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "devdiag-postgres",
+      "model": {
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT EXTRACT(EPOCH FROM (now() - max(ts))) AS seconds_since\nFROM devdiag.diag_run;"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [7200],
+              "type": "gt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": ["A"]
+            },
+            "reducer": {
+              "params": [],
+              "type": "last"
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "reducer": "last",
+        "type": "classic_conditions"
+      }
+    }
+  ],
+  "noDataState": "Alerting",
+  "execErrState": "Alerting",
+  "for": "5m",
+  "annotations": {
+    "description": "No diagnostic runs have been recorded in the last 2 hours. This indicates a pipeline failure or integration issue.",
+    "runbook_url": "https://github.com/leok974/mcp-devdiag/blob/main/deployments/grafana/ALERT_QUERIES.md#alert-2-diagnostic-runs-stalled-no-runs-in-last-2-hours",
+    "summary": "Diagnostic pipeline has stalled"
+  },
+  "labels": {
+    "severity": "critical",
+    "team": "devdiag",
+    "component": "pipeline"
+  },
+  "folderUID": "devdiag-alerts"
+}

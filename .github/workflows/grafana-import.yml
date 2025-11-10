@@ -13,7 +13,54 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client
+      
+      - name: Database health check - Schema validation
+        env:
+          PGPASSWORD: ${{ secrets.DEVDIAG_PG_PASS }}
+        run: |
+          echo "→ Validating PostgreSQL schema..."
+          
+          # Extract host and port from DEVDIAG_PG_HOST (format: host:port)
+          PG_HOST=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f1)
+          PG_PORT=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f2)
+          
+          # Check all 6 views exist
+          VIEW_COUNT=$(psql -h "$PG_HOST" -p "$PG_PORT" -U "${{ secrets.DEVDIAG_PG_USER }}" -d "${{ secrets.DEVDIAG_PG_DB }}" -Atc "
+            SELECT COUNT(*) 
+            FROM pg_views 
+            WHERE schemaname='devdiag' 
+              AND viewname IN ('v_problem_counts','v_fix_success','v_ttr_days','v_env_diversity','v_fix_ranking','v_recent_activity');
+          ")
+          
+          if [ "$VIEW_COUNT" -ne 6 ]; then
+            echo "❌ Schema validation failed: Expected 6 views, found $VIEW_COUNT"
+            exit 1
+          fi
+          
+          echo "✓ All 6 analytics views present"
+      
+      - name: Database health check - Data freshness
+        env:
+          PGPASSWORD: ${{ secrets.DEVDIAG_PG_PASS }}
+        run: |
+          echo "→ Checking data freshness..."
+          
+          PG_HOST=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f1)
+          PG_PORT=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f2)
+          
+          # Check if data exists in last 24h (allow bypass if no recent data)
+          RECENT_ROWS=$(psql -h "$PG_HOST" -p "$PG_PORT" -U "${{ secrets.DEVDIAG_PG_USER }}" -d "${{ secrets.DEVDIAG_PG_DB }}" -Atc "
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM devdiag.diag_run WHERE ts >= NOW() - INTERVAL '24 hours'
+            ) THEN 1 ELSE 0 END;
+          " || echo "0")
+          
+          if [ "$RECENT_ROWS" -eq 0 ]; then
+            echo "⚠️  Warning: No diagnostic runs in last 24 hours (may be expected for staging)"
+          else
+            echo "✓ Data is fresh (runs within 24h)"
+          fi
       
       - name: Import datasource to Grafana
         env:

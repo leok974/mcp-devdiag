@@ -1,0 +1,72 @@
+{
+  "uid": "devdiag-alert-confidence-drop",
+  "title": "DevDiag: Fix confidence <70% (7d)",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "devdiag-postgres",
+      "model": {
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT AVG(avg_confidence) AS overall_fix_confidence\nFROM devdiag.v_fix_success\nWHERE last_success >= NOW() - INTERVAL '7 days';"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [0.7],
+              "type": "lt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": ["A"]
+            },
+            "reducer": {
+              "params": [],
+              "type": "last"
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "reducer": "last",
+        "type": "classic_conditions"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Error",
+  "for": "30m",
+  "annotations": {
+    "description": "The average confidence score for fix suggestions has dropped below 70%, indicating degraded learning model quality.",
+    "runbook_url": "https://github.com/leok974/mcp-devdiag/blob/main/deployments/grafana/ALERT_QUERIES.md#alert-5-fix-success-rate-dropping-70-confidence",
+    "summary": "Learning model confidence has degraded"
+  },
+  "labels": {
+    "severity": "warning",
+    "team": "devdiag",
+    "component": "learning"
+  },
+  "folderUID": "devdiag-alerts"
+}

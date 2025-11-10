@@ -1,0 +1,72 @@
+{
+  "uid": "devdiag-alert-top-problem",
+  "title": "DevDiag: Top problem >20% of runs (7d)",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "devdiag-postgres",
+      "model": {
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT (max_cnt::float / nullif(total_cnt,0)) AS ratio\nFROM (\n  SELECT MAX(cnt) AS max_cnt, SUM(cnt) AS total_cnt\n  FROM (\n    SELECT problem_code, SUM(runs) AS cnt\n    FROM devdiag.v_problem_counts\n    WHERE day >= now() - interval '7 days'\n    GROUP BY problem_code\n  ) s\n) s2;"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [0.20],
+              "type": "gt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": ["A"]
+            },
+            "reducer": {
+              "params": [],
+              "type": "last"
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "reducer": "last",
+        "type": "classic_conditions"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Alerting",
+  "for": "10m",
+  "annotations": {
+    "description": "A single problem code accounts for more than 20% of diagnostic runs in the last 7 days, indicating a widespread issue.",
+    "runbook_url": "https://github.com/leok974/mcp-devdiag/blob/main/deployments/grafana/ALERT_QUERIES.md#alert-1-top-problem-dominates-20-of-todays-runs",
+    "summary": "Top problem dominates diagnostic runs"
+  },
+  "labels": {
+    "severity": "warning",
+    "team": "devdiag",
+    "component": "diagnostics"
+  },
+  "folderUID": "devdiag-alerts"
+}
