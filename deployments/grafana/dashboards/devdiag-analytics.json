@@ -17,7 +17,10 @@
         {
           "name": "tenant",
           "type": "query",
-          "datasource": "DevDiag Postgres",
+          "datasource": {
+            "type": "postgres",
+            "uid": "devdiag-postgres"
+          },
           "query": "SELECT DISTINCT tenant FROM devdiag.diag_run ORDER BY tenant",
           "refresh": 1,
           "includeAll": true,
@@ -37,6 +40,10 @@
         "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT COUNT(*) FROM devdiag.diag_run WHERE ts >= NOW() - INTERVAL '24 hours' AND ('$tenant' = '$__all' OR tenant = '$tenant')",
             "format": "table"
           }
@@ -62,6 +69,10 @@
         "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT COUNT(DISTINCT problem_code) FROM devdiag.v_problem_counts WHERE day = CURRENT_DATE AND ('$tenant' = '$__all' OR tenant = '$tenant')",
             "format": "table"
           }
@@ -87,6 +98,10 @@
         "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT day AS time, problem_code, SUM(runs) AS value FROM devdiag.v_problem_counts WHERE day >= $__timeFrom() AND day <= $__timeTo() AND ('$tenant' = '$__all' OR tenant = '$tenant') GROUP BY 1, 2 ORDER BY 1",
             "format": "time_series"
           }
@@ -109,6 +124,10 @@
         "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT problem_code, SUM(runs)::int AS cnt FROM devdiag.v_problem_counts WHERE day >= NOW() - INTERVAL '7 days' AND ('$tenant' = '$__all' OR tenant = '$tenant') GROUP BY 1 ORDER BY cnt DESC LIMIT 10",
             "format": "table"
           }
@@ -126,6 +145,10 @@
         "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT problem_code AS \"Problem\", fix_code AS \"Fix\", successes AS \"Successes\", ROUND(avg_confidence::numeric, 3) AS \"Avg Confidence\" FROM devdiag.v_fix_success WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY successes DESC LIMIT 15",
             "format": "table"
           }
@@ -166,6 +189,10 @@
         "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT problem_code, EXTRACT(EPOCH FROM ttr_days)/86400 AS ttr_days FROM devdiag.v_ttr_days WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY ttr_days DESC LIMIT 20",
             "format": "table"
           }
@@ -196,6 +223,10 @@
         "gridPos": {"x": 0, "y": 20, "w": 12, "h": 6},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT problem_code AS \"Problem\", unique_environments AS \"Unique Envs\", total_runs AS \"Total Runs\" FROM devdiag.v_env_diversity WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY total_runs DESC",
             "format": "table"
           }
@@ -208,6 +239,10 @@
         "gridPos": {"x": 12, "y": 20, "w": 12, "h": 6},
         "targets": [
           {
+            "datasource": {
+              "type": "postgres",
+              "uid": "devdiag-postgres"
+            },
             "rawSql": "SELECT ts, target_hash, problem_count, problems, preset FROM devdiag.v_recent_activity WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY ts DESC LIMIT 50",
             "format": "table"
           }

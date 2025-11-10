@@ -1,0 +1,41 @@
+name: Grafana Import
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "deployments/grafana/dashboards/**.json"
+      - "deployments/grafana/provisioning/datasources/**.yaml"
+      - "scripts/grafana/**.sh"
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
+      
+      - name: Import datasource to Grafana
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          DEVDIAG_PG_HOST: ${{ secrets.DEVDIAG_PG_HOST }}
+          DEVDIAG_PG_USER: ${{ secrets.DEVDIAG_PG_USER }}
+          DEVDIAG_PG_PASS: ${{ secrets.DEVDIAG_PG_PASS }}
+          DEVDIAG_PG_DB: ${{ secrets.DEVDIAG_PG_DB }}
+        run: |
+          chmod +x scripts/grafana/import-datasource.sh
+          ./scripts/grafana/import-datasource.sh
+      
+      - name: Import dashboard to Grafana
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          chmod +x scripts/grafana/import-dashboard.sh
+          ./scripts/grafana/import-dashboard.sh deployments/grafana/dashboards/devdiag-analytics.json
+      
+      - name: Summary
+        run: |
+          echo "✓ Grafana import completed"
+          echo "Dashboard URL: ${{ secrets.GRAFANA_URL }}/dashboards"
