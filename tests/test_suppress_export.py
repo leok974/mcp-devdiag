@@ -52,7 +52,7 @@ def test_suppressions_empty_config():
 
 def test_export_redaction_keeps_safe_keys():
     """Test that export only keeps SAFE_KEYS."""
-    from mcp_devdiag.export_s3 import _redact, SAFE_KEYS
+    from mcp_devdiag.export_s3 import _redact
     
     payload = {
         "ok": True,

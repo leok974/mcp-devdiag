@@ -21,7 +21,6 @@ from typing import Any
 
 try:
     import psycopg2
-    from psycopg2.extras import execute_batch
 except ImportError:
     print("ERROR: psycopg2 not installed. Run: pip install psycopg2-binary", file=sys.stderr)
     sys.exit(1)

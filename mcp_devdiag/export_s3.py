@@ -1,6 +1,6 @@
 """S3 export functionality for redacted diagnostic bundles."""
 
-from typing import Any, Dict
+from typing import Any
 import json
 import time
 import logging

@@ -1,6 +1,6 @@
 """Playwright driver adapter for runtime DOM checks (staging only)."""
 
-from typing import Any, List, Optional
+from typing import Any, List
 from .adapters import Driver
 
 
