@@ -10,6 +10,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright browsers (optional: comment out if not using Playwright probes)
+RUN python -m playwright install --with-deps chromium
+
 COPY main.py ./main.py
 
 ENV PORT=8080

@@ -36,15 +36,34 @@ Environment variables:
 - `RATE_LIMIT_RPS`: Requests per second limit (default: 2.0)
 - `ALLOW_PRIVATE_IP`: Allow private/loopback IPs (default: 0, set 1 for local testing)
 - `ALLOWED_ORIGINS`: CORS origins (comma-separated, default: `http://127.0.0.1:19010,http://localhost:19010`)
+- `DEVDIAG_CLI`: CLI binary name (default: `mcp-devdiag`)
+- `DEVDIAG_TIMEOUT_S`: CLI timeout in seconds (default: 180)
+- `MAX_CONCURRENT`: Maximum concurrent diagnostic runs (default: 2)
 
 ## API Endpoints
 
 ### `GET /healthz`
-Health check endpoint.
+Health check endpoint (also supports HEAD).
 
 **Response:**
 ```json
 {"ok": true, "service": "devdiag-http", "version": "0.1.0"}
+```
+
+### `HEAD /healthz`
+Lightweight health check (no body).
+
+### `GET /metrics`
+Prometheus-compatible metrics endpoint.
+
+**Response (text/plain):**
+```
+# HELP devdiag_http_up 1 if server is healthy
+# TYPE devdiag_http_up gauge
+devdiag_http_up 1
+# HELP devdiag_http_rate_limit_rps configured RPS
+# TYPE devdiag_http_rate_limit_rps gauge
+devdiag_http_rate_limit_rps 2.0
 ```
 
 ### `GET /probes`
@@ -121,12 +140,14 @@ Restrict `ALLOWED_ORIGINS` in production to your EvalForge web origin only.
 ```bash
 gcloud run deploy devdiag-http \
   --image ghcr.io/leok974/mcp-devdiag/devdiag-http:latest \
+  --region us-central1 --platform managed --allow-unauthenticated \
+  --cpu 1 --memory 512Mi --min-instances 0 --max-instances 3 \
   --set-env-vars JWKS_URL=https://YOUR-IDP/.well-known/jwks.json \
   --set-env-vars JWT_AUD=mcp-devdiag \
   --set-env-vars ALLOW_PRIVATE_IP=0 \
   --set-env-vars RATE_LIMIT_RPS=2 \
-  --set-env-vars ALLOWED_ORIGINS=https://evalforge.app \
-  --allow-unauthenticated
+  --set-env-vars MAX_CONCURRENT=2 \
+  --set-env-vars ALLOWED_ORIGINS=https://evalforge.app
 ```
 
 ### Fly.io
@@ -158,13 +179,9 @@ app = "devdiag-http"
 
 ## EvalForge Integration
 
-### Server Config
-Set environment variable in EvalForge backend:
-```bash
-export DEVDIAG_BASE=http://127.0.0.1:8080
-```
+### Option 1: Direct Frontend Call
+Frontend calls DevDiag HTTP server directly (requires CORS + JWT handling):
 
-### Frontend Call
 ```typescript
 const response = await fetch('http://127.0.0.1:8080/diag/run', {
   method: 'POST',
@@ -181,6 +198,32 @@ const response = await fetch('http://127.0.0.1:8080/diag/run', {
 
 const data = await response.json();
 console.log(data.result);
+```
+
+### Option 2: Backend Proxy (Recommended)
+Backend hides JWT tokens from frontend. Use the provided proxy:
+
+**Backend** (`apps/api/routes/devdiag_proxy.py`):
+```python
+# See examples/evalforge-backend-proxy.py
+from .routes import devdiag_proxy
+app.include_router(devdiag_proxy.router, prefix="/api")
+
+# Set environment variables:
+# DEVDIAG_BASE=http://devdiag-http:8080
+# DEVDIAG_JWT=<your-jwt>
+```
+
+**Frontend**:
+```typescript
+// No JWT needed - backend handles it
+const response = await fetch('/api/ops/diag', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({url: 'https://example.com', preset: 'app'}),
+});
+const data = await response.json();
+console.log(data.problems, data.fixes);
 ```
 
 ## CI Integration
@@ -211,12 +254,41 @@ Future:
 - Structured logging (JSON)
 - OpenTelemetry tracing
 
-## Development
+## Testing
 
-### Run Tests
-```bash
-pytest apps/devdiag-http/
+### Local Smoke Tests
+
+**PowerShell:**
+```powershell
+.\test_local.ps1
+# Or with custom URL:
+.\test_local.ps1 http://127.0.0.1:8080
 ```
+
+**Bash:**
+```bash
+./test_smoke.sh
+# Or with custom URL:
+./test_smoke.sh http://127.0.0.1:8080
+```
+
+### Docker Smoke Test
+```bash
+# Start container
+docker compose -f docker-compose.devdiag.yml up -d --build
+
+# Run tests
+curl -s http://127.0.0.1:8080/healthz | jq .
+curl -s http://127.0.0.1:8080/metrics
+curl -s -X POST http://127.0.0.1:8080/diag/run \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://example.com","preset":"app"}' | jq .
+
+# Cleanup
+docker compose -f docker-compose.devdiag.yml down
+```
+
+## Development
 
 ### Build Docker Image
 ```bash

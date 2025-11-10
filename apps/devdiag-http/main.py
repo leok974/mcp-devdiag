@@ -1,13 +1,18 @@
 from __future__ import annotations
-import json, os, subprocess, time, ipaddress
+import json, os, subprocess, time, ipaddress, uuid, logging, sys
 from typing import Literal, Optional, Any, Dict
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, AnyHttpUrl, Field
 from jose import jwt, jwk
 from jose.utils import base64url_decode
 import requests
 import threading
+
+# --------------------------------------------------------------------------------------
+# Logging
+# --------------------------------------------------------------------------------------
+logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
 # --------------------------------------------------------------------------------------
 # Config
@@ -17,6 +22,12 @@ JWT_AUD = os.getenv("JWT_AUD", "mcp-devdiag")
 ALLOW_PRIVATE_IP = os.getenv("ALLOW_PRIVATE_IP", "0") == "1"
 RATE_LIMIT_RPS = float(os.getenv("RATE_LIMIT_RPS", "2"))  # simple token bucket
 ALLOWED_ORIGINS = [o for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o]
+CLI_BIN = os.getenv("DEVDIAG_CLI", "mcp-devdiag")
+CLI_TIMEOUT = int(os.getenv("DEVDIAG_TIMEOUT_S", "180"))
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
+
+# Concurrency control
+_sem = threading.Semaphore(MAX_CONCURRENT)
 
 # Centralize CLI invocation here in case flags differ in future versions.
 # Adjust this function if your mcp-devdiag CLI uses different flags.
@@ -28,26 +39,33 @@ def run_devdiag_cli(url: str, preset: str, suppress: Optional[list[str]], extra_
       mcp-devdiag probe --url <url> --preset <preset> --format json [--suppress P1 --suppress P2]
     If your CLI differs, update the command below (single place).
     """
-    cmd = ["mcp-devdiag", "probe", "--url", url, "--preset", preset, "--format", "json"]
+    cmd = [CLI_BIN, "probe", "--url", url, "--preset", preset, "--format", "json"]
     if suppress:
         for code in suppress:
             cmd += ["--suppress", code]
     cmd += extra_args
+    
+    # Acquire concurrency slot
+    acquired = _sem.acquire(timeout=CLI_TIMEOUT)
+    if not acquired:
+        raise HTTPException(status_code=503, detail="Busy: concurrent runs at capacity")
+    
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=180)
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=CLI_TIMEOUT)
+        try:
+            return json.loads(out)
+        except json.JSONDecodeError:
+            # If CLI emitted pretty logs + JSON, try last JSON block
+            last_brace = out.rfind("{")
+            return json.loads(out[last_brace:])
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"DevDiag error: {e.output.strip() or str(e)}")
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="DevDiag timed out")
-    try:
-        return json.loads(out)
     except json.JSONDecodeError:
-        # If CLI emitted pretty logs + JSON, try last JSON block
-        try:
-            last_brace = out.rfind("{")
-            return json.loads(out[last_brace:])
-        except Exception:
-            raise HTTPException(status_code=502, detail=f"Non-JSON output from DevDiag: {out[:4000]}")
+        raise HTTPException(status_code=502, detail=f"Non-JSON output from DevDiag: {out[:4000]}")
+    finally:
+        _sem.release()
 
 # --------------------------------------------------------------------------------------
 # Security (JWT via JWKS)
@@ -148,6 +166,24 @@ def _is_private_ip(url: str) -> bool:
 # --------------------------------------------------------------------------------------
 app = FastAPI(title="DevDiag HTTP Wrapper", version="0.1.0")
 
+# Request ID middleware
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    rid = request.headers.get("x-request-id", str(uuid.uuid4()))
+    start = time.time()
+    response = await call_next(request)
+    dur = (time.time() - start) * 1000
+    logging.info(json.dumps({
+        "event": "http_access",
+        "rid": rid,
+        "method": request.method,
+        "path": request.url.path,
+        "status": response.status_code,
+        "ms": round(dur, 2),
+    }))
+    response.headers["x-request-id"] = rid
+    return response
+
 if ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -160,6 +196,29 @@ if ALLOWED_ORIGINS:
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "devdiag-http", "version": "0.1.0"}
+
+@app.head("/healthz")
+def healthz_head():
+    return Response(status_code=200)
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus-compatible metrics endpoint"""
+    lines = [
+        '# HELP devdiag_http_up 1 if server is healthy',
+        '# TYPE devdiag_http_up gauge',
+        'devdiag_http_up 1',
+        '# HELP devdiag_http_rate_limit_rps configured RPS',
+        '# TYPE devdiag_http_rate_limit_rps gauge',
+        f'devdiag_http_rate_limit_rps {RATE_LIMIT_RPS}',
+        '# HELP devdiag_http_max_concurrent configured concurrent runs',
+        '# TYPE devdiag_http_max_concurrent gauge',
+        f'devdiag_http_max_concurrent {MAX_CONCURRENT}',
+        '# HELP devdiag_http_timeout_seconds configured CLI timeout',
+        '# TYPE devdiag_http_timeout_seconds gauge',
+        f'devdiag_http_timeout_seconds {CLI_TIMEOUT}',
+    ]
+    return Response("\n".join(lines) + "\n", media_type="text/plain")
 
 @app.get("/probes")
 def probes():
