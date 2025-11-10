@@ -1,0 +1,225 @@
+{
+  "dashboard": {
+    "title": "DevDiag Analytics",
+    "tags": ["devdiag", "diagnostics", "learning"],
+    "timezone": "browser",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-7d",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5m", "15m", "30m", "1h", "2h", "1d"]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "tenant",
+          "type": "query",
+          "datasource": "DevDiag Postgres",
+          "query": "SELECT DISTINCT tenant FROM devdiag.diag_run ORDER BY tenant",
+          "refresh": 1,
+          "includeAll": true,
+          "multi": false,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Diagnostic Runs (24h)",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "rawSql": "SELECT COUNT(*) FROM devdiag.diag_run WHERE ts >= NOW() - INTERVAL '24 hours' AND ('$tenant' = '$__all' OR tenant = '$tenant')",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Distinct Problems (Today)",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "rawSql": "SELECT COUNT(DISTINCT problem_code) FROM devdiag.v_problem_counts WHERE day = CURRENT_DATE AND ('$tenant' = '$__all' OR tenant = '$tenant')",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 5, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Problems Over Time",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT day AS time, problem_code, SUM(runs) AS value FROM devdiag.v_problem_counts WHERE day >= $__timeFrom() AND day <= $__timeTo() AND ('$tenant' = '$__all' OR tenant = '$tenant') GROUP BY 1, 2 ORDER BY 1",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 20,
+              "stacking": {"mode": "normal"}
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Top Problem Codes (7d)",
+        "type": "barchart",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT problem_code, SUM(runs)::int AS cnt FROM devdiag.v_problem_counts WHERE day >= NOW() - INTERVAL '7 days' AND ('$tenant' = '$__all' OR tenant = '$tenant') GROUP BY 1 ORDER BY cnt DESC LIMIT 10",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "xTickLabelRotation": 0,
+          "showValue": "always"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Fixes That Work",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT problem_code AS \"Problem\", fix_code AS \"Fix\", successes AS \"Successes\", ROUND(avg_confidence::numeric, 3) AS \"Avg Confidence\" FROM devdiag.v_fix_success WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY successes DESC LIMIT 15",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [{"displayName": "Successes", "desc": true}]
+        },
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Avg Confidence"},
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"value": 0, "color": "red"},
+                      {"value": 0.7, "color": "yellow"},
+                      {"value": 0.9, "color": "green"}
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 6,
+        "title": "Time to Remediation (TTR)",
+        "type": "bargauge",
+        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+        "targets": [
+          {
+            "rawSql": "SELECT problem_code, EXTRACT(EPOCH FROM ttr_days)/86400 AS ttr_days FROM devdiag.v_ttr_days WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY ttr_days DESC LIMIT 20",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient",
+          "showUnfilled": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "d",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 2, "color": "yellow"},
+                {"value": 7, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Environment Diversity",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 20, "w": 12, "h": 6},
+        "targets": [
+          {
+            "rawSql": "SELECT problem_code AS \"Problem\", unique_environments AS \"Unique Envs\", total_runs AS \"Total Runs\" FROM devdiag.v_env_diversity WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY total_runs DESC",
+            "format": "table"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Recent Activity (7d)",
+        "type": "table",
+        "gridPos": {"x": 12, "y": 20, "w": 12, "h": 6},
+        "targets": [
+          {
+            "rawSql": "SELECT ts, target_hash, problem_count, problems, preset FROM devdiag.v_recent_activity WHERE ('$tenant' = '$__all' OR tenant = '$tenant') ORDER BY ts DESC LIMIT 50",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "showHeader": true
+        }
+      }
+    ],
+    "version": 1,
+    "uid": "devdiag-analytics",
+    "schemaVersion": 38
+  },
+  "overwrite": true
+}
