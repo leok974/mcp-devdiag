@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.egg-info/
+.tasteos_logs/
+.pytest_cache/
+.coverage

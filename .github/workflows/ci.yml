@@ -1,0 +1,28 @@
+name: ci
+on:
+  push: { branches: ["**"] }
+  pull_request: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install package
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install -U pip
+          pip install -e .
+          pip install -r requirements-dev.txt
+      - name: Lint & Typecheck
+        run: |
+          . .venv/bin/activate
+          ruff check .
+          ruff format --check .
+          mypy mcp_devdiag
+      - name: Tests
+        run: |
+          . .venv/bin/activate
+          pytest
