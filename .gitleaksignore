@@ -1,10 +1,8 @@
 # Gitleaks ignore file
-# Add false positives here (one per line)
+# Uses commit:file:line fingerprint format
+# To generate: gitleaks detect --report-format json --report-path report.json
+# Then extract fingerprints from the report
 
-# Example Grafana tokens in documentation/examples (not real secrets)
-deployments/grafana/alerts/README.md:*
-deployments/OPERATIONS.md:*
+# No current false positives - add fingerprints as needed
+# Format: <commit-sha>:<file-path>:<line-number>
 
-# Test fixtures with dummy credentials
-**/test/**/*fixture*
-**/tests/**/*mock*
