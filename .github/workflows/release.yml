@@ -31,5 +31,8 @@ jobs:
       
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true      # Print package hash for verification
+          attestations: true    # Generate Sigstore provenance attestations
         # Trusted Publishing - no token needed!
         # Configure at: https://pypi.org/manage/account/publishing/
