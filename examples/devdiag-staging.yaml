@@ -1,0 +1,41 @@
+# devdiag.yaml (staging only)
+# Example configuration for staging environment with all add-ons enabled
+
+security:
+  jwks_url: "https://auth.example.com/.well-known/jwks.json"
+  audience: "mcp-devdiag"
+  ssrf_block_cidrs:
+    - "127.0.0.0/8"      # Localhost
+    - "10.0.0.0/8"       # Private network
+    - "172.16.0.0/12"    # Private network
+    - "192.168.0.0/16"   # Private network
+    - "169.254.0.0/16"   # Link-local
+
+limits:
+  per_tenant_rpm: 30
+  burst: 5
+  export_max_bytes: 262144  # 256 KB cap for S3 exports
+
+diag:
+  # Enable Playwright for runtime DOM/console checks (staging only!)
+  browser_enabled: true
+  
+  # Suppress known issues that aren't bugs
+  suppress:
+    - code: "PORTAL_ROOT_MISSING"
+      reason: "Native toasts - not using React portals"
+    - code: "CSP_INLINE_STYLE"
+      reason: "Third-party widget styles - vendor limitation"
+  
+  # Supported presets
+  presets:
+    - "chat"
+    - "embed"
+    - "app"
+    - "full"
+
+export:
+  s3_bucket: "mcp-devdiag-artifacts"
+  region: "us-east-1"
+  # Optional: Add prefix for organization
+  # key_prefix: "staging/"

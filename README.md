@@ -1,6 +1,7 @@
 # mcp-devdiag
 
 [![PyPI version](https://img.shields.io/pypi/v/mcp-devdiag.svg)](https://pypi.org/project/mcp-devdiag/)
+[![Python](https://img.shields.io/pypi/pyversions/mcp-devdiag.svg)](https://pypi.org/project/mcp-devdiag/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-31_passing-brightgreen.svg)](#)
 [![Release](https://img.shields.io/github/v/tag/leok974/mcp-devdiag)](https://github.com/leok974/mcp-devdiag/tags)
@@ -39,6 +40,9 @@ pip install mcp-devdiag
 # Pinned version
 pip install "mcp-devdiag==0.2.0"
 
+# With optional extras for add-ons
+pip install "mcp-devdiag[playwright,export]"  # DOM checks + S3 export
+
 # From GitHub
 pip install "mcp-devdiag @ git+https://github.com/leok974/mcp-devdiag.git@v0.2.0"
 
@@ -46,16 +50,35 @@ pip install "mcp-devdiag @ git+https://github.com/leok974/mcp-devdiag.git@v0.2.0
 pip install -e .
 ```
 
-## Quick Start
+### Optional Extras
 
-**Install:**
+Install add-ons for enhanced diagnostics:
+
 ```bash
-pip install mcp-devdiag
+# Playwright driver (runtime DOM/console checks - staging only)
+pip install "mcp-devdiag[playwright]"
+playwright install chromium
+
+# S3 export (redacted incident snapshots)
+pip install "mcp-devdiag[export]"
+
+# All add-ons
+pip install "mcp-devdiag[playwright,export]"
 ```
 
-**Run:**
+See [`docs/ADDONS.md`](docs/ADDONS.md) for complete add-ons documentation.
+
+## Quick Start
+
+**Consumer quickstart** (copy/paste):
+
 ```bash
+# Install
+pip install mcp-devdiag==0.2.0
+
+# Run MCP server
 mcp-devdiag --stdio
+# Or: python -m mcp_devdiag --stdio
 ```
 
 **Configure VS Code** (`settings.json`):
@@ -68,6 +91,17 @@ mcp-devdiag --stdio
     }
   }
 }
+```
+
+**Minimal config** (`devdiag.yaml`):
+```yaml
+mode: dev
+tenant: my-app
+rbac:
+  provider: jwt
+  jwks_url: "https://auth.example.com/.well-known/jwks.json"
+allow_probes:
+  - "GET https://api.example.com/**"
 ```
 
 ### 60-Second Smoke Test (Copy/Paste)
@@ -550,6 +584,51 @@ ruff format .
 # Type check
 mypy mcp_devdiag
 ```
+
+### Publishing to PyPI
+
+For maintainers releasing new versions:
+
+1. **Configure PyPI credentials** (one-time setup):
+   ```bash
+   # Create ~/.pypirc (Linux/Mac) or C:\Users\USERNAME\.pypirc (Windows)
+   # Get tokens from: https://pypi.org/manage/account/token/
+   
+   [distutils]
+   index-servers =
+       pypi
+       testpypi
+   
+   [pypi]
+   username = __token__
+   password = YOUR_PYPI_API_TOKEN_HERE
+   
+   [testpypi]
+   repository = https://test.pypi.org/legacy/
+   username = __token__
+   password = YOUR_TESTPYPI_API_TOKEN_HERE
+   ```
+
+2. **Build and publish**:
+   ```bash
+   # Build distributions
+   python -m build
+   
+   # Validate packages
+   twine check dist/*
+   
+   # Test upload (recommended first)
+   twine upload --repository testpypi dist/mcp_devdiag-X.Y.Z*
+   
+   # Production upload
+   twine upload dist/mcp_devdiag-X.Y.Z*
+   ```
+
+3. **Verify installation**:
+   ```bash
+   pip install mcp-devdiag==X.Y.Z
+   mcp-devdiag --help
+   ```
 
 ## Files Used
 
