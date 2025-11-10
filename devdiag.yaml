@@ -1,0 +1,27 @@
+mode: prod:observe
+tenant: tasteos
+allow_probes:
+  - "GET https://api.tasteos.app/healthz"
+  - "GET https://api.tasteos.app/api/ready"
+  - "HEAD https://cdn.tasteos.app/**"
+sampling:
+  frontend_events: 0.02
+  network_spans: 0.02
+  backend_logs: "rate:5/sec"
+retention:
+  logs_ttl_days: 7
+  metrics_ttl_days: 30
+rbac:
+  provider: jwt
+  roles:
+    - name: reader
+      can: [get_status, get_network_summary, get_metrics, get_request_diagnostics]
+    - name: operator
+      can: ["*"]
+redaction:
+  headers_deny: [authorization, cookie, set-cookie, x-api-key]
+  path_params_regex: ["^/users/\\d+", "^/tokens/[^/]+"]
+  query_keys_deny: [token, key, code]
+shipping:
+  otlp_endpoint: "http://otel-collector:4318"
+  s3_bucket: "s3://diag-bundles/tasteos/"

@@ -1,0 +1,37 @@
+# DevDiag configuration for STAGING environment
+# Higher sampling rates than prod, relaxed probe allowlist
+
+mode: staging
+tenant: yourapp-staging
+
+# Staging allows more generous sampling for debugging
+sampling:
+  frontend_events: 0.05  # 5%
+  network_spans: 0.05    # 5%
+  backend_logs: "rate:10/sec"
+
+# Staging probe allowlist - includes more endpoints for testing
+allow_probes:
+  - "GET https://staging.api.example.com/healthz"
+  - "GET https://staging.api.example.com/api/ready"
+  - "GET https://staging.api.example.com/api/status"
+  - "POST https://staging.api.example.com/api/debug/**"
+  - "HEAD https://staging-cdn.example.com/**"
+
+retention:
+  logs_ttl_days: 3      # Shorter retention in staging
+  metrics_ttl_days: 14
+
+rbac:
+  provider: jwt
+  roles:
+    - name: reader
+      can: [get_status, get_network_summary, get_metrics, get_request_diagnostics]
+    - name: operator
+      can: ["*"]
+
+# Staging can be less strict on redaction for debugging
+redaction:
+  headers_deny: [authorization, cookie, set-cookie]
+  path_params_regex: []
+  query_keys_deny: [token, key]
