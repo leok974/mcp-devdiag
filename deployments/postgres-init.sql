@@ -88,6 +88,14 @@ series AS (
     generate_series(s.first_seen::date, current_date, '1 day'::interval) AS d
   FROM seen s
 ),
+daily_problems AS (
+  SELECT
+    r.tenant,
+    r.target_hash,
+    r.ts::date AS d,
+    jsonb_array_elements_text(r.problems) AS problem_code
+  FROM devdiag.diag_run r
+),
 counts AS (
   SELECT
     sr.tenant,
@@ -95,15 +103,13 @@ counts AS (
     sr.problem_code,
     sr.d,
     sr.start_day,
-    coalesce(
-      sum(CASE WHEN jsonb_array_elements_text(r.problems) = sr.problem_code THEN 1 ELSE 0 END),
-      0
-    ) AS hits
+    count(dp.problem_code) AS hits
   FROM series sr
-  LEFT JOIN devdiag.diag_run r
-    ON r.tenant = sr.tenant
-    AND r.target_hash = sr.target_hash
-    AND r.ts::date = sr.d
+  LEFT JOIN daily_problems dp
+    ON dp.tenant = sr.tenant
+    AND dp.target_hash = sr.target_hash
+    AND dp.d = sr.d
+    AND dp.problem_code = sr.problem_code
   GROUP BY 1, 2, 3, 4, 5
 ),
 first_zero AS (

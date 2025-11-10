@@ -30,7 +30,7 @@ shipping:
 # Closed-loop learning configuration
 learn:
   enabled: true
-  store: "sqlite:///devdiag.db"      # or "postgresql+psycopg://user:pass@host/db"
+  store: "postgresql+psycopg://devdiag:DevDiag2025SecurePass!@localhost:5432/devdiag"
   privacy:
     hash_targets: true               # hash base_url to target_hash
     keep_evidence_keys: ["csp", "xfo", "framework", "server", "routes"]
