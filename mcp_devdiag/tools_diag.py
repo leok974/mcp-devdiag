@@ -2,7 +2,9 @@
 """MCP tool handlers for generalized diagnostic probes."""
 
 from typing import Any, Optional, cast
+import ipaddress
 import httpx
+from urllib.parse import urlparse
 from fastmcp import FastMCP
 
 from .config import load_config
@@ -24,22 +26,61 @@ mcp = FastMCP("DevDiag Probes")
 # Load configuration
 CONFIG = load_config()
 
+# Private/reserved IP ranges (SSRF protection)
+PRIVATE_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),    # Loopback
+    ipaddress.ip_network("10.0.0.0/8"),     # Private
+    ipaddress.ip_network("172.16.0.0/12"),  # Private
+    ipaddress.ip_network("192.168.0.0/16"), # Private
+    ipaddress.ip_network("169.254.0.0/16"), # Link-local
+    ipaddress.ip_network("::1/128"),        # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),       # IPv6 private
+    ipaddress.ip_network("fe80::/10"),      # IPv6 link-local
+]
+
 
 def http_client_factory():
     """Create HTTP client for driver."""
     return httpx.AsyncClient()
 
 
-def _assert_allowed(url: str) -> None:
+def _deny_private(url: str) -> None:
     """
-    Validate URL against allowlist.
+    Block requests to private/reserved IP ranges (SSRF protection).
 
     Args:
         url: URL to validate
 
     Raises:
-        ValueError: If URL is not in allowlist
+        ValueError: If URL resolves to a private IP
     """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid URL: missing hostname")
+
+    try:
+        ip = ipaddress.ip_address(host)
+        for network in PRIVATE_NETWORKS:
+            if ip in network:
+                raise ValueError(f"Denied: {host} is in private range {network}")
+    except ValueError as e:
+        # If host is not an IP, let it pass (DNS resolution happens later)
+        if "does not appear to be" not in str(e):
+            raise
+
+
+def _assert_allowed(url: str) -> None:
+    """
+    Validate URL against allowlist and SSRF guards.
+
+    Args:
+        url: URL to validate
+
+    Raises:
+        ValueError: If URL is not in allowlist or is private
+    """
+    _deny_private(url)
     if not CONFIG.method_url_allowed("GET", url):
         raise ValueError(f"URL not allow-listed: {url}")
 

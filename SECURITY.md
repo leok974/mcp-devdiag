@@ -142,6 +142,32 @@ For production deployments, ensure:
 
 ---
 
+## Service Level Objectives (SLOs)
+
+Production deployments should monitor these SLOs:
+
+**Probe Success Rate** (5-minute window):
+- **Target**: ≥ 99% success rate
+- **Alert**: < 95% over 15 minutes
+- **Query**: `sum(rate(http_requests_total{endpoint=~"diag_.*", status=~"2.."}[5m])) / sum(rate(http_requests_total{endpoint=~"diag_.*"}[5m]))`
+
+**Response Latency** (5-minute window):
+- **Target**: p90 < 300ms
+- **Alert**: p90 > 500ms over 10 minutes
+- **Query**: `histogram_quantile(0.90, rate(http_request_duration_seconds_bucket{endpoint=~"diag_.*"}[5m]))`
+
+**HTTP 5xx Rate** (5-minute window):
+- **Target**: < 0.5 req/s
+- **Alert**: ≥ 1.0 req/s over 5 minutes
+- **Query**: `sum(rate(http_requests_total{status=~"5.."}[5m]))`
+
+**JWT Verification Failures** (5-minute window):
+- **Target**: 0 failures
+- **Alert**: ≥ 5 failures over 5 minutes
+- **Query**: `sum(rate(jwt_verify_errors_total[5m]))`
+
+---
+
 ## Vulnerability Reporting
 
 To report security vulnerabilities, please email: **security@example.com**

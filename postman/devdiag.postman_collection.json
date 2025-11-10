@@ -1,0 +1,211 @@
+{
+  "info": {
+    "name": "DevDiag API",
+    "description": "MCP DevDiag diagnostic probes API collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{DEVDIAG_JWT}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://diag.example.com",
+      "type": "string"
+    },
+    {
+      "key": "TARGET_URL",
+      "value": "https://app.example.com",
+      "type": "string"
+    },
+    {
+      "key": "DEVDIAG_JWT",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Quickcheck",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/quickcheck",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "quickcheck"]
+        },
+        "description": "Run handshake + CSP headers probes"
+      },
+      "response": []
+    },
+    {
+      "name": "Status Plus",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\",\n  \"preset\": \"full\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/status_plus",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "status_plus"]
+        },
+        "description": "Comprehensive status with score, severity, fixes"
+      },
+      "response": []
+    },
+    {
+      "name": "Remediation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\",\n  \"problem_codes\": [\"CSP_MISSING\", \"CORS_WILDCARD\"]\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/remediation",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "remediation"]
+        },
+        "description": "Get fix recommendations for specific problems"
+      },
+      "response": []
+    },
+    {
+      "name": "Bundle (Full Preset)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\",\n  \"preset\": \"full\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/bundle",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "bundle"]
+        },
+        "description": "Run all probes in full preset"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Probe Result Schema",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/schema/probe_result",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "schema", "probe_result"]
+        },
+        "description": "Get JSON schema for ProbeResult type"
+      },
+      "response": []
+    },
+    {
+      "name": "CSP Headers Probe",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/probe/csp_headers",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "probe", "csp_headers"]
+        },
+        "description": "Check CSP headers"
+      },
+      "response": []
+    },
+    {
+      "name": "Handshake Probe",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/probe/handshake",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "probe", "handshake"]
+        },
+        "description": "Check CORS headers and HTTP status"
+      },
+      "response": []
+    },
+    {
+      "name": "Framework Versions Probe",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{TARGET_URL}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/mcp/diag/probe/framework_versions",
+          "host": ["{{BASE_URL}}"],
+          "path": ["mcp", "diag", "probe", "framework_versions"]
+        },
+        "description": "Detect framework versions from headers"
+      },
+      "response": []
+    }
+  ]
+}

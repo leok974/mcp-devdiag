@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-devdiag
+  namespace: monitoring
+  labels:
+    app: mcp-devdiag
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mcp-devdiag
+  template:
+    metadata:
+      labels:
+        app: mcp-devdiag
+        devdiag.mode: prod:observe
+        devdiag.tenant: myapp
+    spec:
+      containers:
+      - name: mcp-devdiag
+        image: mcp-devdiag:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        
+        env:
+        - name: MODE
+          value: "prod:observe"
+        - name: TENANT
+          value: "myapp"
+        - name: PROM_URL
+          value: "http://prometheus.monitoring:9090"
+        - name: JWKS_URL
+          valueFrom:
+            secretKeyRef:
+              name: devdiag-secrets
+              key: jwks-url
+        
+        volumeMounts:
+        - name: config
+          mountPath: /app/devdiag.yaml
+          subPath: devdiag.yaml
+          readOnly: true
+        
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+      
+      volumes:
+      - name: config
+        configMap:
+          name: devdiag-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-devdiag
+  namespace: monitoring
+  labels:
+    app: mcp-devdiag
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: mcp-devdiag
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devdiag-config
+  namespace: monitoring
+data:
+  devdiag.yaml: |
+    mode: prod:observe
+    tenant: myapp
+    allow_probes:
+      - "GET https://api.myapp.com/healthz"
+      - "GET https://api.myapp.com/ready"
+    sampling:
+      frontend_events: 0.02
+      network_spans: 0.02
+    rbac:
+      provider: jwt
+      jwks_url: "https://auth.example.com/.well-known/jwks.json"
+      roles:
+        - name: reader
+          can: [get_status, get_metrics]
+        - name: operator
+          can: ["*"]
+    redaction:
+      headers_deny: [authorization, cookie, set-cookie]
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devdiag-secrets
+  namespace: monitoring
+type: Opaque
+stringData:
+  jwks-url: "https://auth.example.com/.well-known/jwks.json"

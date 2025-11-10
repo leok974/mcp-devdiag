@@ -1,0 +1,109 @@
+{
+  "dashboard": {
+    "title": "DevDiag Overview",
+    "tags": ["devdiag", "diagnostics"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "HTTP 5xx Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m]))",
+            "legendFormat": "5xx errors/sec"
+          }
+        ],
+        "thresholds": [
+          {
+            "value": 0.5,
+            "colorMode": "critical"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Probe Success Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{endpoint=~\"diag_.*\", status=~\"2..\"}[5m])) / sum(rate(http_requests_total{endpoint=~\"diag_.*\"}[5m]))",
+            "legendFormat": "Success rate"
+          }
+        ],
+        "thresholds": [
+          {
+            "value": 0.95,
+            "colorMode": "critical"
+          },
+          {
+            "value": 0.99,
+            "colorMode": "warning"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "Top Probe Problems",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, sum by (problem_code) (rate(probe_problems_total[5m])))",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": 4,
+        "title": "Response Latency (p90)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.90, rate(http_request_duration_seconds_bucket{endpoint=~\"diag_.*\"}[5m]))",
+            "legendFormat": "p90 latency"
+          }
+        ],
+        "thresholds": [
+          {
+            "value": 0.3,
+            "colorMode": "warning"
+          },
+          {
+            "value": 0.5,
+            "colorMode": "critical"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        }
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}

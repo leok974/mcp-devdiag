@@ -255,6 +255,58 @@ export PROM_URL=http://prometheus:9090
 
 ---
 
+## Monitoring & Alerting
+
+### SLO-Based Alerts
+
+Configure alerts for these SLOs (see SECURITY.md for queries):
+
+1. **Probe Success Rate** < 95% over 15 minutes → Page on-call
+2. **Response Latency** p90 > 500ms over 10 minutes → Page on-call
+3. **HTTP 5xx Rate** ≥ 1.0 req/s over 5 minutes → Investigate immediately
+4. **JWT Verify Failures** ≥ 5 over 5 minutes → Security incident
+
+**Prometheus Alert Rules**:
+```yaml
+groups:
+  - name: devdiag
+    interval: 30s
+    rules:
+      - alert: DevDiagProbeFailureRate
+        expr: sum(rate(http_requests_total{endpoint=~"diag_.*", status=~"2.."}[5m])) / sum(rate(http_requests_total{endpoint=~"diag_.*"}[5m])) < 0.95
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DevDiag probe success rate below 95%"
+
+      - alert: DevDiagHighLatency
+        expr: histogram_quantile(0.90, rate(http_request_duration_seconds_bucket{endpoint=~"diag_.*"}[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DevDiag p90 latency above 500ms"
+
+      - alert: DevDiagHigh5xxRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) >= 1.0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DevDiag 5xx rate ≥ 1.0 req/s"
+
+      - alert: DevDiagJWTVerifyFailures
+        expr: sum(rate(jwt_verify_errors_total[5m])) >= 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DevDiag JWT verification failures detected"
+```
+
+---
+
 ## Configuration Files
 
 ### Staging

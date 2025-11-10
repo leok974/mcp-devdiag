@@ -35,7 +35,93 @@ pip install "mcp-devdiag @ git+https://github.com/leok974/mcp-devdiag.git@v0.1.0
 pip install -e .
 ```
 
+## Quick Start
+
+**Install:**
+```bash
+pip install mcp-devdiag
+```
+
+**Run:**
+```bash
+mcp-devdiag --stdio
+```
+
+**Configure VS Code** (`settings.json`):
+```json
+{
+  "mcpServers": {
+    "mcp-devdiag": {
+      "command": "mcp-devdiag",
+      "args": ["--stdio"]
+    }
+  }
+}
+```
+
+### 60-Second Smoke Test (Copy/Paste)
+
+```bash
+# Set once
+BASE="$DEVDIAG_URL"                 # e.g. https://diag.example.com
+JWT="$DEVDIAG_READER_JWT"           # reader token (JWKS-backed)
+APP="https://app.example.com"       # target app base
+
+# 1) HTTP-only quickcheck (CI safe)
+curl -s -X POST "$BASE/mcp/diag/quickcheck" \
+  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d "{\"url\":\"$APP/chat/\"}" | jq
+
+# 2) Full status with score + fixes
+curl -s -G "$BASE/mcp/diag/status_plus" \
+  --data-urlencode "base_url=$APP" \
+  -H "Authorization: Bearer $JWT" | jq
+
+# 3) Probe schema (for client typing)
+curl -s "$BASE/mcp/diag/schema/probe_result" \
+  -H "Authorization: Bearer $JWT" | jq
+```
+
 ## Configuration
+
+### Minimal devdiag.yaml Skeleton (Any Project)
+
+```yaml
+mode: prod:observe
+tenant: default
+allow_probes:
+  - "GET https://app.example.com/healthz"
+  - "GET https://app.example.com/api/ready"
+  - "HEAD https://cdn.example.com/**"
+sampling:
+  frontend_events: 0.02
+  network_spans: 0.02
+retention:
+  logs_ttl_days: 7
+  metrics_ttl_days: 30
+rbac:
+  provider: jwt
+  jwks_url: "https://auth.example.com/.well-known/jwks.json"
+  roles:
+    - name: reader
+      can: [get_status, get_network_summary, get_metrics, get_request_diagnostics]
+    - name: operator
+      can: ["*"]
+redaction:
+  headers_deny: [authorization, cookie, set-cookie, x-api-key]
+diag:
+  portal_roots: ["#__PORTAL_ROOT__", "#toast-root", "#__NEXT_PORTAL__"]
+  overlay_min_width_pct: 0.85
+  overlay_min_height_pct: 0.50
+  handshake: { message_types: ["chat:ready","embed:ready"], timeout_ms: 3000 }
+  csp:
+    must_include:
+      - directive: "frame-ancestors"
+        any_of: ["'self'", "https://*.example.com"]
+    forbidden_xfo: ["DENY"]
+```
+
+### Full Configuration Example
 
 Create `devdiag.yaml` in your project root:
 
@@ -225,6 +311,108 @@ Paste these into a Grafana dashboard:
 - Map `.problems[]` counts
 
 **Tip**: Expose DevDiag as a Grafana JSON API data source and query `status_plus` directly.
+
+#### Grafana JSON-API Datasource
+
+Configure as a Grafana datasource:
+
+**Query URL**:
+```
+https://<diag-host>/mcp/diag/status_plus?base_url=${__url.params:app}
+```
+
+**Headers**:
+```
+Authorization: Bearer ${secret:DEVDIAG_READER_JWT}
+```
+
+**Panel Paths**:
+- Problems: `$.problems`
+- Score: `$.score`
+- Fixes: `$.fixes`
+- Severity: `$.severity`
+
+## Client SDKs
+
+### TypeScript
+
+Generate types from JSON schema:
+```bash
+npx quicktype -s schema -o src/types/devdiag.ts mcp_devdiag/schemas/probe_result.json
+```
+
+Or use the ready-made SDK:
+```typescript
+// See docs/examples/devdiag.ts
+import { statusPlus, quickcheck } from './devdiag';
+
+const client = { baseUrl: "https://diag.example.com", jwt: process.env.DEVDIAG_JWT! };
+const result = await statusPlus(client, "https://app.example.com", "full");
+```
+
+### Python
+
+```python
+# See docs/examples/devdiag_client.py
+from devdiag_client import DevDiagClient
+
+client = DevDiagClient(base_url=os.environ["DEVDIAG_URL"], jwt=os.environ["DEVDIAG_JWT"])
+result = client.status_plus("https://app.example.com", preset="full")
+```
+
+Copy SDK files from `docs/examples/` to your project.
+
+## Deployment
+
+### Docker Compose
+
+```bash
+# See deployments/docker-compose.yml
+docker-compose up -d
+```
+
+### Kubernetes
+
+```bash
+# See deployments/kubernetes.yaml
+kubectl apply -f deployments/kubernetes.yaml
+```
+
+**Health Checks**:
+- Liveness: `GET /healthz` (port 8000, delay 10s, period 10s)
+- Readiness: `GET /ready` (port 8000, delay 5s, period 5s)
+
+## Prebuilt Assets
+
+### Grafana Dashboard
+
+Import `dashboards/devdiag.json` for instant monitoring with:
+- HTTP 5xx rate (threshold: 0.5 req/s)
+- Probe success rate (threshold: 95%)
+- Top probe problems
+- Response latency p90 (threshold: 300ms/500ms)
+
+### Postman Collection
+
+Import `postman/devdiag.postman_collection.json` for quick testing:
+- Set `DEVDIAG_JWT` environment variable
+- Configure `BASE_URL` and `TARGET_URL`
+- Includes: quickcheck, status_plus, remediation, bundle, schema, individual probes
+
+## Suggested Next Steps (Optional)
+
+Future enhancements to consider:
+
+1. **OpenAPI summaries** on routes for tool reflection
+2. **Playwright driver** behind `diag.browser_enabled=true` for runtime DOM checks
+3. **Suppressions** in `devdiag.yaml`:
+   ```yaml
+   suppress:
+     - code: "PORTAL_ROOT_MISSING"
+       reason: "Native toasts; no portal needed"
+   ```
+
+See `TODO.md` for full roadmap with effort estimates.
 
 ## Development
 

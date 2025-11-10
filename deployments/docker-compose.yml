@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  mcp-devdiag:
+    image: mcp-devdiag:latest
+    container_name: mcp-devdiag
+    restart: unless-stopped
+    
+    ports:
+      - "8000:8000"
+    
+    environment:
+      - MODE=prod:observe
+      - TENANT=myapp
+      - PROM_URL=http://prometheus:9090
+      - JWKS_URL=https://auth.example.com/.well-known/jwks.json
+    
+    volumes:
+      - ./devdiag.yaml:/app/devdiag.yaml:ro
+      - devdiag-data:/app/.tasteos_logs
+    
+    labels:
+      - "devdiag.mode=prod:observe"
+      - "devdiag.tenant=myapp"
+      - "devdiag.allow_probes=/chat/,/api/ready"
+      - "traefik.enable=true"
+      - "traefik.http.routers.devdiag.rule=Host(`diag.example.com`)"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - monitoring
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+volumes:
+  devdiag-data:
+  prometheus-data:
+
+networks:
+  monitoring:
+    driver: bridge
