@@ -2,6 +2,8 @@
 """Detect DOM overlays that may block embedded content."""
 
 from typing import Any
+from .types import ProbeResult
+from .score import get_severity
 
 # JavaScript to detect viewport-covering elements and shadow DOM hosts
 OVERLAY_DETECTION_JS = r"""
@@ -43,7 +45,7 @@ OVERLAY_DETECTION_JS = r"""
 """
 
 
-async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
+async def run(driver: Any, url: str, cfg: dict[str, Any]) -> ProbeResult:
     """
     Detect DOM overlays and shadow DOM that may interfere with embeds.
 
@@ -53,7 +55,7 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
         cfg: Configuration dict with overlay thresholds
 
     Returns:
-        Dict with problems, evidence, and remediation
+        ProbeResult with problems, evidence, and remediation
     """
     problems: list[str] = []
     remediation: list[str] = []
@@ -62,11 +64,13 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
 
     # HTTP-only mode cannot detect runtime DOM
     if driver.name == "http":
-        return {
-            "problems": [],
-            "evidence": {"note": "http-only; no DOM runtime available"},
-            "remediation": [],
-        }
+        return ProbeResult(
+            probe="dom_overlays",
+            problems=[],
+            evidence={"note": "http-only; no DOM runtime available"},
+            remediation=[],
+            severity="info",
+        )
 
     # Get thresholds from config
     min_width = cfg.get("overlay_min_width_pct", 0.85)
@@ -100,4 +104,10 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
             ]
         )
 
-    return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    return ProbeResult(
+        probe="dom_overlays",
+        problems=problems,
+        remediation=remediation,
+        evidence=evidence,
+        severity=get_severity(problems),
+    )

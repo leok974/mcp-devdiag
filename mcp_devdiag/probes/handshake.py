@@ -2,9 +2,10 @@
 """Generic embed ready signal detection."""
 
 from typing import Any
+from .types import ProbeResult
 
 
-async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
+async def run(driver: Any, url: str, cfg: dict[str, Any]) -> ProbeResult:
     """
     Detect if embedded content sends ready signal via postMessage or console.
 
@@ -14,7 +15,7 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
         cfg: Configuration with message_types and timeout_ms
 
     Returns:
-        Dict with problems, evidence, and remediation
+        ProbeResult with problems, evidence, and remediation
     """
     problems: list[str] = []
     remediation: list[str] = []
@@ -23,11 +24,13 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
 
     # HTTP-only mode cannot detect runtime messages
     if driver.name == "http":
-        return {
-            "problems": [],
-            "evidence": {"note": "http-only; no postMessage visibility"},
-            "remediation": [],
-        }
+        return ProbeResult(
+            probe="handshake",
+            problems=[],
+            evidence={"note": "http-only; no postMessage visibility"},
+            remediation=[],
+            severity="info",
+        )
 
     # Get configuration
     message_types = cfg.get("message_types", ["ready"])
@@ -60,4 +63,10 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
         "ready_found": ready_found,
     }
 
-    return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    return ProbeResult(
+        probe="handshake",
+        problems=problems,
+        remediation=remediation,
+        evidence=evidence,
+        severity="error" if "EMBED_NO_READY_SIGNAL" in problems else "info",
+    )

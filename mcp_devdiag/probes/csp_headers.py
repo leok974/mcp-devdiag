@@ -2,6 +2,8 @@
 """Content Security Policy and X-Frame-Options validation."""
 
 from typing import Any
+from .types import ProbeResult
+from .score import get_severity
 
 
 def parse_csp_directives(csp: str) -> dict[str, str]:
@@ -25,7 +27,7 @@ def parse_csp_directives(csp: str) -> dict[str, str]:
     return directives
 
 
-async def run(driver: Any, url: str, csp_cfg: dict[str, Any]) -> dict[str, Any]:
+async def run(driver: Any, url: str, csp_cfg: dict[str, Any]) -> ProbeResult:
     """
     Validate CSP and X-Frame-Options headers for embed compatibility.
 
@@ -35,7 +37,7 @@ async def run(driver: Any, url: str, csp_cfg: dict[str, Any]) -> dict[str, Any]:
         csp_cfg: CSP configuration with must_include and forbidden_xfo
 
     Returns:
-        Dict with problems, evidence, and remediation
+        ProbeResult with problems, evidence, and remediation
     """
     problems: list[str] = []
     remediation: list[str] = []
@@ -86,4 +88,12 @@ async def run(driver: Any, url: str, csp_cfg: dict[str, Any]) -> dict[str, Any]:
         "xfo": xfo or None,
     }
 
-    return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    return ProbeResult(
+        probe="csp_headers",
+        problems=problems,
+        remediation=remediation,
+        evidence=evidence,
+        severity="error"
+        if "IFRAME_FRAME_ANCESTORS_BLOCKED" in problems
+        else get_severity(problems),
+    )

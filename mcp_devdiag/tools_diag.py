@@ -1,7 +1,7 @@
 # mcp_devdiag/tools_diag.py
 """MCP tool handlers for generalized diagnostic probes."""
 
-from typing import Optional
+from typing import Any, Optional, cast
 import httpx
 from fastmcp import FastMCP
 
@@ -15,6 +15,7 @@ from .probes import (
     csp_inline,
     bundle,
 )
+from .probes.fixes import fixes_for
 
 # Initialize MCP app
 mcp = FastMCP("DevDiag Probes")
@@ -28,27 +29,77 @@ def http_client_factory():
     return httpx.AsyncClient()
 
 
+def _assert_allowed(url: str) -> None:
+    """
+    Validate URL against allowlist.
+
+    Args:
+        url: URL to validate
+
+    Raises:
+        ValueError: If URL is not in allowlist
+    """
+    if not CONFIG.method_url_allowed("GET", url):
+        raise ValueError(f"URL not allow-listed: {url}")
+
+
 @mcp.tool()
-async def diag_bundle(url: str, driver: Optional[str] = None) -> dict:
+async def diag_bundle(url: str, driver: Optional[str] = None, preset: Optional[str] = None) -> dict:
     """
     Run curated set of diagnostic probes based on presets.
 
     Args:
         url: Target URL to probe
         driver: Driver type ("http", "playwright", "puppeteer", "selenium") or None for auto-detect
+        preset: Probe preset ("chat", "embed", "app", "full", or None for "full")
 
     Returns:
-        Aggregated problems, remediation, and evidence from all probes
+        Aggregated problems, remediation, evidence, and severity score
     """
+    _assert_allowed(url)
     drv = await get_driver(driver, http_client_factory)
     try:
-        return await bundle.run_bundle(drv, url, {"diag": CONFIG.__dict__.get("diag", {})})
+        return await bundle.run_bundle(drv, url, {"diag": CONFIG.__dict__.get("diag", {})}, preset)
     finally:
         await drv.dispose()
 
 
 @mcp.tool()
-async def diag_probe_dom_overlays(url: str, driver: Optional[str] = None) -> dict:
+async def diag_quickcheck(url: str) -> dict:
+    """
+    Fast HTTP-only CSP and iframe compatibility check (CI-safe).
+
+    Args:
+        url: Target URL to probe
+
+    Returns:
+        Quick check result with ok status and CSP problems
+    """
+    _assert_allowed(url)
+    drv = await get_driver("http", http_client_factory)
+    try:
+        res = await csp_headers.run(drv, url, CONFIG.__dict__.get("diag", {}).get("csp", {}))
+        return {"ok": not res["problems"], **res}
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+async def diag_remediation(problems: list[str]) -> dict:
+    """
+    Get remediation steps for specific problem codes.
+
+    Args:
+        problems: List of problem codes
+
+    Returns:
+        Dict mapping problem codes to fix recipes
+    """
+    return fixes_for(problems)
+
+
+@mcp.tool()
+async def diag_probe_dom_overlays(url: str, driver: Optional[str] = None) -> dict[str, Any]:
     """
     Detect DOM overlays that may block embedded content.
 
@@ -61,13 +112,15 @@ async def diag_probe_dom_overlays(url: str, driver: Optional[str] = None) -> dic
     """
     drv = await get_driver(driver, http_client_factory)
     try:
-        return await dom_overlays.run(drv, url, CONFIG.__dict__.get("diag", {}))
+        return cast(
+            dict[str, Any], await dom_overlays.run(drv, url, CONFIG.__dict__.get("diag", {}))
+        )
     finally:
         await drv.dispose()
 
 
 @mcp.tool()
-async def diag_probe_csp_headers(url: str) -> dict:
+async def diag_probe_csp_headers(url: str) -> dict[str, Any]:
     """
     Validate Content Security Policy and X-Frame-Options headers.
 
@@ -80,7 +133,7 @@ async def diag_probe_csp_headers(url: str) -> dict:
     drv = await get_driver("http", http_client_factory)
     try:
         csp_cfg = CONFIG.__dict__.get("diag", {}).get("csp", {})
-        return await csp_headers.run(drv, url, csp_cfg)
+        return cast(dict[str, Any], await csp_headers.run(drv, url, csp_cfg))
     finally:
         await drv.dispose()
 
@@ -97,10 +150,11 @@ async def diag_probe_chat_handshake(url: str, driver: Optional[str] = None) -> d
     Returns:
         Problems, evidence, and remediation for handshake issues
     """
+    _assert_allowed(url)
     drv = await get_driver(driver, http_client_factory)
     try:
         handshake_cfg = CONFIG.__dict__.get("diag", {}).get("handshake", {})
-        return await handshake.run(drv, url, handshake_cfg)
+        return cast(dict[str, Any], await handshake.run(drv, url, handshake_cfg))
     finally:
         await drv.dispose()
 
@@ -117,29 +171,31 @@ async def diag_probe_framework_versions(url: str, driver: Optional[str] = None) 
     Returns:
         Problems, evidence, and remediation for framework version issues
     """
+    _assert_allowed(url)
     drv = await get_driver(driver, http_client_factory)
     try:
         framework_cfg = CONFIG.__dict__.get("diag", {}).get("framework", {})
-        return await framework_versions.run(drv, url, framework_cfg)
+        return cast(dict[str, Any], await framework_versions.run(drv, url, framework_cfg))
     finally:
         await drv.dispose()
 
 
 @mcp.tool()
-async def diag_probe_csp_inline(url: str, driver: Optional[str] = None) -> dict:
+async def diag_probe_csp_inline(url: str, driver: Optional[str] = None) -> dict[str, Any]:
     """
-    Detect CSP inline script violations.
+    Check for inline script CSP violations.
 
     Args:
         url: Target URL to probe
-        driver: Driver type or None for auto-detect (requires browser for console errors)
+        driver: Driver type or None for auto-detect (requires browser for inline checks)
 
     Returns:
-        Problems, evidence, and remediation for inline script violations
+        Problems, evidence, and remediation for CSP inline issues
     """
+    _assert_allowed(url)
     drv = await get_driver(driver, http_client_factory)
     try:
-        return await csp_inline.run(drv, url, CONFIG.__dict__.get("diag", {}))
+        return cast(dict[str, Any], await csp_inline.run(drv, url, CONFIG.__dict__.get("diag", {})))
     finally:
         await drv.dispose()
 
@@ -156,6 +212,7 @@ async def diag_probe_iframes(url: str, driver: Optional[str] = None) -> dict:
     Returns:
         Problems, evidence, and remediation for iframe issues
     """
+    _assert_allowed(url)
     # TODO: Implement iframe-specific probe
     # For now, delegate to bundle which includes CSP checks
     drv = await get_driver(driver, http_client_factory)
@@ -181,6 +238,7 @@ async def diag_probe_portal_root(url: str, driver: Optional[str] = None) -> dict
     Returns:
         Problems, evidence, and remediation for portal root issues
     """
+    _assert_allowed(url)
     drv = await get_driver(driver, http_client_factory)
     try:
         if drv.name == "http":

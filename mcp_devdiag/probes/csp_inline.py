@@ -2,9 +2,10 @@
 """Detect CSP inline script violations."""
 
 from typing import Any
+from .types import ProbeResult
 
 
-async def run(driver: Any, url: str, _cfg: dict[str, Any]) -> dict[str, Any]:
+async def run(driver: Any, url: str, _cfg: dict[str, Any]) -> ProbeResult:
     """
     Detect Content Security Policy violations for inline scripts.
 
@@ -14,7 +15,7 @@ async def run(driver: Any, url: str, _cfg: dict[str, Any]) -> dict[str, Any]:
         _cfg: Configuration (currently unused)
 
     Returns:
-        Dict with problems, evidence, and remediation
+        ProbeResult with problems, evidence, and remediation
     """
     problems: list[str] = []
     remediation: list[str] = []
@@ -23,11 +24,13 @@ async def run(driver: Any, url: str, _cfg: dict[str, Any]) -> dict[str, Any]:
 
     # HTTP-only mode cannot detect runtime CSP violations
     if driver.name == "http":
-        return {
-            "problems": [],
-            "evidence": {"note": "http-only; use headers scan for CSP"},
-            "remediation": [],
-        }
+        return ProbeResult(
+            probe="csp_inline",
+            problems=[],
+            evidence={"note": "http-only; use headers scan for CSP"},
+            remediation=[],
+            severity="info",
+        )
 
     # Get console logs and filter for CSP violations
     console_logs = await driver.get_console()
@@ -39,11 +42,13 @@ async def run(driver: Any, url: str, _cfg: dict[str, Any]) -> dict[str, Any]:
     ]
 
     if not csp_errors:
-        return {
-            "problems": [],
-            "evidence": {"errors": [], "total_logs": len(console_logs)},
-            "remediation": [],
-        }
+        return ProbeResult(
+            probe="csp_inline",
+            problems=[],
+            evidence={"errors": [], "total_logs": len(console_logs)},
+            remediation=[],
+            severity="info",
+        )
 
     # Found CSP violations
     problems.append("CSP_INLINE_BLOCKED")
@@ -62,4 +67,10 @@ async def run(driver: Any, url: str, _cfg: dict[str, Any]) -> dict[str, Any]:
         "total_logs": len(console_logs),
     }
 
-    return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    return ProbeResult(
+        probe="csp_inline",
+        problems=problems,
+        remediation=remediation,
+        evidence=evidence,
+        severity="error" if "CSP_INLINE_BLOCKED" in problems else "warn",
+    )

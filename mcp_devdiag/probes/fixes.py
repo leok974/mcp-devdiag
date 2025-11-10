@@ -73,3 +73,16 @@ def get_all_fixes(problem_codes: list[str]) -> dict[str, list[str]]:
         Dict mapping problem codes to remediation steps
     """
     return {code: get_fixes(code) for code in problem_codes}
+
+
+def fixes_for(codes: list[str]) -> dict[str, list[str]]:
+    """
+    Get fixes for specified problem codes (alias for get_all_fixes).
+
+    Args:
+        codes: List of problem codes
+
+    Returns:
+        Dict mapping codes to fix recipes
+    """
+    return {c: FIXES[c] for c in codes if c in FIXES}

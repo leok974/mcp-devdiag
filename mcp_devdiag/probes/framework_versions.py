@@ -3,6 +3,8 @@
 
 import re
 from typing import Any
+from .types import ProbeResult
+from .score import get_severity
 
 
 def sniff_framework_logs(logs: list[str], regex_map: dict[str, str]) -> dict[str, str]:
@@ -29,7 +31,7 @@ def sniff_framework_logs(logs: list[str], regex_map: dict[str, str]) -> dict[str
     return detected
 
 
-async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
+async def run(driver: Any, url: str, cfg: dict[str, Any]) -> ProbeResult:
     """
     Auto-detect frontend framework versions (React, Vue, Svelte, etc.).
 
@@ -39,7 +41,7 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
         cfg: Configuration with detect_console_regex patterns
 
     Returns:
-        Dict with problems, evidence, and remediation
+        ProbeResult with problems, evidence, and remediation
     """
     problems: list[str] = []
     remediation: list[str] = []
@@ -48,11 +50,13 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
 
     # HTTP-only mode cannot detect console logs
     if driver.name == "http":
-        return {
-            "problems": [],
-            "evidence": {"note": "http-only; no console logs available"},
-            "remediation": [],
-        }
+        return ProbeResult(
+            probe="framework_versions",
+            problems=[],
+            evidence={"note": "http-only; no console logs available"},
+            remediation=[],
+            severity="info",
+        )
 
     # Get console logs
     console_logs = await driver.get_console()
@@ -90,4 +94,10 @@ async def run(driver: Any, url: str, cfg: dict[str, Any]) -> dict[str, Any]:
         "regex_patterns": regex_map,
     }
 
-    return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    return ProbeResult(
+        probe="framework_versions",
+        problems=problems,
+        remediation=remediation,
+        evidence=evidence,
+        severity=get_severity(problems),
+    )
