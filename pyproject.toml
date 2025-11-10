@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-devdiag"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server for autonomous dev diagnostics (logs, CORS, env, network)."
 readme = "README.md"
 license = { text = "MIT" }
