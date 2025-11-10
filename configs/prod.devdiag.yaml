@@ -1,0 +1,53 @@
+# DevDiag configuration for PRODUCTION environment
+# Minimal sampling, strict allowlists, comprehensive redaction
+
+mode: prod:observe
+tenant: yourapp-prod
+
+# Production uses minimal sampling to reduce overhead
+sampling:
+  frontend_events: 0.02  # 2%
+  network_spans: 0.02    # 2%
+  backend_logs: "rate:5/sec"
+
+# Production probe allowlist - only health/readiness checks
+allow_probes:
+  - "GET https://api.example.com/healthz"
+  - "GET https://api.example.com/api/ready"
+  - "HEAD https://cdn.example.com/**"
+
+retention:
+  logs_ttl_days: 7
+  metrics_ttl_days: 30
+
+rbac:
+  provider: jwt
+  roles:
+    - name: reader
+      can: [get_status, get_network_summary, get_metrics]
+    - name: operator
+      can: ["*"]
+
+# Production requires comprehensive redaction
+redaction:
+  headers_deny:
+    - authorization
+    - cookie
+    - set-cookie
+    - x-api-key
+    - x-csrf-token
+    - x-session-token
+  path_params_regex:
+    - "^/users/\\d+"
+    - "^/tokens/[^/]+"
+    - "^/sessions/[^/]+"
+  query_keys_deny:
+    - token
+    - key
+    - code
+    - session
+    - api_key
+
+# Prometheus integration (optional)
+# Set PROM_URL environment variable to enable
+# Example: PROM_URL=http://prometheus:9090
