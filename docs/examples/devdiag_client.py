@@ -154,9 +154,7 @@ class DevDiagClient:
 if __name__ == "__main__":
     import os
 
-    client = DevDiagClient(
-        base_url=os.environ["DEVDIAG_URL"], jwt=os.environ["DEVDIAG_READER_JWT"]
-    )
+    client = DevDiagClient(base_url=os.environ["DEVDIAG_URL"], jwt=os.environ["DEVDIAG_READER_JWT"])
 
     # Get comprehensive status
     result = client.status_plus("https://app.example.com", preset="full")

@@ -106,7 +106,9 @@ def sync_fix_outcomes(sqlite_conn: sqlite3.Connection, pg_cursor: Any) -> int:
 
     upserted = 0
     for id_, ts, tenant, problem_code, fix_code, confidence, support, env_fp, notes in outcomes:
-        pg_cursor.execute(sql, (ts, tenant, problem_code, fix_code, confidence, support, env_fp, notes))
+        pg_cursor.execute(
+            sql, (ts, tenant, problem_code, fix_code, confidence, support, env_fp, notes)
+        )
         upserted += 1
 
     return upserted
