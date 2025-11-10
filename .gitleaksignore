@@ -1,0 +1,10 @@
+# Gitleaks ignore file
+# Add false positives here (one per line)
+
+# Example Grafana tokens in documentation/examples (not real secrets)
+deployments/grafana/alerts/README.md:*
+deployments/OPERATIONS.md:*
+
+# Test fixtures with dummy credentials
+**/test/**/*fixture*
+**/tests/**/*mock*

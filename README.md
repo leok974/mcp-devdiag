@@ -695,6 +695,51 @@ For maintainers releasing new versions:
 - `.tasteos_logs/network.jsonl` - Network request telemetry
 - `.tasteos_logs/env.json` - Environment configuration snapshot
 
+## Security
+
+### Secret Scanning
+
+This repository uses [Gitleaks](https://github.com/gitleaks/gitleaks) to prevent accidental commits of secrets (API keys, tokens, passwords).
+
+**For Contributors:**
+
+After cloning the repository, run the setup script to install git hooks:
+
+```bash
+# Windows (PowerShell)
+.\scripts\setup-git-hooks.ps1
+
+# Linux/macOS
+./scripts/setup-git-hooks.sh
+```
+
+**Manual Installation:**
+
+```bash
+# Windows
+winget install gitleaks
+
+# macOS
+brew install gitleaks
+
+# Linux
+curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.29.0/gitleaks_8.29.0_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+sudo mv /tmp/gitleaks /usr/local/bin/
+```
+
+**Pre-Commit Hook:**
+
+The pre-commit hook automatically scans staged files for secrets before each commit. If secrets are detected:
+
+1. **Remove the secret** and use environment variables instead
+2. **Add to `.gitleaksignore`** if it's a false positive
+3. **Bypass (NOT RECOMMENDED):** `git commit --no-verify`
+
+**CI/CD:**
+
+GitHub Actions runs Gitleaks on every push and pull request (`.github/workflows/security-scan.yml`).
+
 ## License
 
 MIT License - see LICENSE file
