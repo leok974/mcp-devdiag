@@ -8,6 +8,8 @@
 
 Model Context Protocol server for **production-safe autonomous development diagnostics**. Provides tools for reading logs, environment state, CORS configuration, network summaries, and live probing with role-based access control.
 
+**Now includes:** [Standalone HTTP Server](#http-server) for EvalForge and CI integration (FastAPI + JWT + rate limiting).
+
 ## Features
 
 - 🔒 **Production-Safe**: Sampling, redaction, and allowlist-based probing
@@ -424,6 +426,103 @@ result = client.status_plus("https://app.example.com", preset="full")
 ```
 
 Copy SDK files from `docs/examples/` to your project.
+
+## HTTP Server
+
+**Standalone FastAPI wrapper** for calling DevDiag from EvalForge web app and CI pipelines. Includes JWT auth (JWKS), rate limiting, and SSRF protection.
+
+### Quick Start
+
+```bash
+# Local development (no auth)
+cd apps/devdiag-http
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8080
+
+# Test
+curl -s http://127.0.0.1:8080/healthz
+curl -s -X POST "http://127.0.0.1:8080/diag/run" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.leoklemet.com","preset":"app"}' | jq .
+```
+
+### Docker Compose
+
+```bash
+docker compose -f docker-compose.devdiag.yml up -d --build
+curl -s http://127.0.0.1:8080/healthz
+```
+
+### Configuration
+
+Environment variables:
+- `JWKS_URL`: JWKS endpoint for JWT validation (empty = auth disabled for local dev)
+- `JWT_AUD`: JWT audience claim (default: `mcp-devdiag`)
+- `RATE_LIMIT_RPS`: Requests per second limit (default: 2.0)
+- `ALLOW_PRIVATE_IP`: Allow private/loopback IPs (default: 0, set 1 for local testing)
+- `ALLOWED_ORIGINS`: CORS origins (comma-separated)
+
+### API Endpoints
+
+**`POST /diag/run`** - Run diagnostics on a URL
+
+Request:
+```json
+{
+  "url": "https://example.com",
+  "preset": "app",
+  "suppress": ["CSP_FRAME_ANCESTORS"],
+  "extra_args": ["--verbose"]
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "url": "https://example.com",
+  "preset": "app",
+  "result": {"problems": [], "fixes": {}, "evidence": {}}
+}
+```
+
+**`GET /healthz`** - Health check  
+**`GET /probes`** - List available presets
+
+### Deployment
+
+**Cloud Run:**
+```bash
+gcloud run deploy devdiag-http \
+  --image ghcr.io/leok974/mcp-devdiag/devdiag-http:latest \
+  --set-env-vars JWKS_URL=https://YOUR-IDP/.well-known/jwks.json \
+  --set-env-vars JWT_AUD=mcp-devdiag \
+  --set-env-vars ALLOWED_ORIGINS=https://evalforge.app
+```
+
+**Fly.io / Render:** See `apps/devdiag-http/README.md` for full deployment guides.
+
+### EvalForge Integration
+
+Server config:
+```bash
+export DEVDIAG_BASE=http://127.0.0.1:8080
+```
+
+Frontend call:
+```typescript
+const response = await fetch('http://127.0.0.1:8080/diag/run', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${jwt}`,
+  },
+  body: JSON.stringify({url: 'https://example.com', preset: 'app'}),
+});
+const data = await response.json();
+```
+
+Full documentation: **[apps/devdiag-http/README.md](apps/devdiag-http/README.md)**
 
 ## Deployment
 

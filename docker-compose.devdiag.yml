@@ -1,0 +1,13 @@
+services:
+  devdiag-http:
+    build:
+      context: ./apps/devdiag-http
+    image: devdiag-http:latest
+    environment:
+      JWKS_URL: ${JWKS_URL:-}            # e.g. https://YOUR-IDP/.well-known/jwks.json
+      JWT_AUD: ${JWT_AUD:-mcp-devdiag}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-2}
+      ALLOW_PRIVATE_IP: ${ALLOW_PRIVATE_IP:-0}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:19010,http://localhost:19010}
+    ports:
+      - "127.0.0.1:8080:8080"
