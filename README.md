@@ -1,5 +1,10 @@
 # mcp-devdiag
 
+[![PyPI version](https://img.shields.io/pypi/v/mcp-devdiag.svg)](https://pypi.org/project/mcp-devdiag/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-31_passing-brightgreen.svg)](#)
+[![Release](https://img.shields.io/github/v/tag/leok974/mcp-devdiag)](https://github.com/leok974/mcp-devdiag/tags)
+
 Model Context Protocol server for **production-safe autonomous development diagnostics**. Provides tools for reading logs, environment state, CORS configuration, network summaries, and live probing with role-based access control.
 
 ## Features
@@ -87,6 +92,23 @@ curl -s -G "$BASE/mcp/diag/status_plus" \
 curl -s "$BASE/mcp/diag/schema/probe_result" \
   -H "Authorization: Bearer $JWT" | jq
 ```
+
+### Migration (0.1.x → 0.2.0)
+
+If upgrading from v0.1.x:
+
+**Required changes to `devdiag.yaml`:**
+- Add `rbac.jwks_url: "https://auth.example.com/.well-known/jwks.json"`
+- Add `allow_probes:` with explicit URL patterns you permit
+- Add `diag:` block (optional, for presets/overrides)
+
+**Optional new features to adopt:**
+- New endpoints: `/mcp/diag/status_plus` (score + fixes), `/mcp/diag/quickcheck` (CI HTTP-only)
+- Import `dashboards/devdiag.json` into Grafana for instant monitoring
+- Enable `.github/workflows/devdiag-quickcheck.yml` for PR validation
+- Use `/mcp/diag/schema/probe_result` for TypeScript type generation
+
+**Breaking changes:** None. `get_status` remains backward-compatible; `status_plus` adds new fields.
 
 ## Configuration
 
