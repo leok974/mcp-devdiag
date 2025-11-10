@@ -1,43 +1,29 @@
 # Future Enhancements
 
+## Recently Implemented (v0.2.0+)
+
+- ✅ **Playwright Driver** - Standalone driver with runtime DOM checks (`adapters_playwright.py`)
+- ✅ **Suppressions** - Configurable problem code filtering in `devdiag.yaml`
+- ✅ **S3 Export** - Redacted diagnostic bundle export with AES256-SSE (`export_s3.py`)
+- ✅ **Tool Documentation** - Enhanced docstrings for MCP tools
+
 ## Nice-to-Have Features
 
 These are optional enhancements that can be added incrementally as needed.
 
-### 1. OpenAPI Documentation
+### 1. OpenAPI Documentation (FastAPI)
 
-**Status**: Not implemented  
-**Effort**: Small (1-2 hours)
+**Status**: Not applicable (using FastMCP, not FastAPI)  
+**Effort**: N/A
 
-Add OpenAPI/Swagger doclets for MCP routes to enable client reflection:
-
-```python
-# mcp_devdiag/server.py
-from fastapi import FastAPI
-from fastapi.openapi.docs import get_swagger_ui_html
-
-app = FastAPI(
-    title="DevDiag MCP Server",
-    description="Production-safe autonomous diagnostics",
-    version="0.2.0",
-)
-
-@app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title="DevDiag API Docs"
-    )
-```
-
-**Benefits**: Auto-generated client SDKs, interactive API explorer
+Note: DevDiag uses FastMCP which doesn't expose FastAPI routes. For API documentation, refer to MCP tool docstrings and README examples.
 
 ---
 
-### 2. Optional Playwright Driver
+### 2. Browser Driver Feature Flag
 
-**Status**: Partially implemented (runtime checks only)  
-**Effort**: Medium (4-6 hours)
+**Status**: Implemented  
+**Effort**: Complete
 
 Add feature flag to explicitly enable browser drivers:
 

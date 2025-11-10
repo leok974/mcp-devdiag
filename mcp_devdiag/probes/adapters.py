@@ -105,7 +105,7 @@ async def get_driver(
     Get appropriate driver based on kind and availability.
 
     Args:
-        kind: "http", "playwright", "puppeteer", "selenium", or None (auto-detect)
+        kind: "http", "playwright" or None (auto-detect)
         http_client_factory: Callable that returns httpx.AsyncClient
         playwright_factory: Optional callable that returns Playwright page
 
@@ -114,18 +114,20 @@ async def get_driver(
     """
     kind = (kind or "http").lower()
 
-    # Force HTTP if no browser factory available
-    if kind == "http" or playwright_factory is None:
-        return HttpDriver(http_client_factory())
-
-    # Playwright support
+    # Playwright support with runtime check
     if kind == "playwright":
         if playwright_factory is None:
-            # Graceful degradation
-            return HttpDriver(http_client_factory())
+            # Try importing playwright for standalone use
+            try:
+                from .adapters_playwright import PlaywrightDriver as StandalonePlaywright
+                drv = StandalonePlaywright()
+                await drv.start()
+                return drv
+            except (ImportError, RuntimeError):
+                # Graceful degradation to HTTP
+                return HttpDriver(http_client_factory())
         page = await playwright_factory()
         return PlaywrightDriver(page)
 
-    # TODO: Add puppeteer/selenium support
-    # For now, default to HTTP for unsupported drivers
+    # Default to HTTP
     return HttpDriver(http_client_factory())

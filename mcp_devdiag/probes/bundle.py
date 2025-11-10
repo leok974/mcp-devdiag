@@ -20,6 +20,21 @@ PRESETS = {
 }
 
 
+def _apply_suppressions(problems: list[str], cfg: dict[str, Any]) -> list[str]:
+    """
+    Filter out suppressed problem codes.
+    
+    Args:
+        problems: List of problem codes
+        cfg: Diag config section with optional 'suppress' list
+    
+    Returns:
+        Filtered problems excluding suppressed codes
+    """
+    suppressed_codes = {s["code"] for s in cfg.get("suppress", []) if isinstance(s, dict)}
+    return [p for p in problems if p not in suppressed_codes]
+
+
 async def run_bundle(
     driver: Any, url: str, cfg: dict[str, Any], preset: Optional[str] = None
 ) -> dict[str, Any]:
@@ -103,6 +118,10 @@ async def run_bundle(
         evidence[probe_name] = probe_result.get("evidence", {})
 
     problems = sorted(all_problems)
+    
+    # Apply suppressions from config
+    problems = _apply_suppressions(problems, diag_cfg)
+    
     total_score = score_problems(problems)
 
     return {

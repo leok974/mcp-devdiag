@@ -406,6 +406,71 @@ Import `postman/devdiag.postman_collection.json` for quick testing:
 - Configure `BASE_URL` and `TARGET_URL`
 - Includes: quickcheck, status_plus, remediation, bundle, schema, individual probes
 
+## Add-ons
+
+### Playwright Driver (Staging Only)
+
+Enable runtime DOM inspection and console log capture:
+
+```yaml
+# devdiag.yaml
+diag:
+  browser_enabled: true  # Enable Playwright driver
+```
+
+```bash
+# Install Playwright
+pip install playwright
+playwright install chromium
+
+# Use in probes
+curl -s -X POST "$BASE/mcp/diag/bundle" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://app.example.com","driver":"playwright","preset":"full"}' | jq
+```
+
+**Note**: Only enable in dev/staging. Production should use HTTP-only driver.
+
+### Suppressions
+
+Ignore known/intentional issues in diagnostics:
+
+```yaml
+# devdiag.yaml
+diag:
+  suppress:
+    - code: "PORTAL_ROOT_MISSING"
+      reason: "App uses native toasts; no portal needed"
+    - code: "FRAMEWORK_VERSION_MISMATCH"
+      reason: "Deliberate canary test in staging"
+```
+
+Suppressed problems are filtered from bundle results but logged for audit.
+
+### S3 Export
+
+Export redacted diagnostic bundles for incident analysis:
+
+```yaml
+# devdiag.yaml
+export:
+  s3_bucket: "mcp-devdiag-artifacts"
+  region: "us-east-1"
+```
+
+```bash
+# Export snapshot (operator role required)
+pip install boto3
+
+curl -s -X POST "$BASE/mcp/devdiag/export_snapshot" \
+  -H "Authorization: Bearer $OPERATOR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"problems":["CSP_MISSING"],"score":5,"evidence":{}}' | jq
+```
+
+Exports are automatically redacted (no headers, bodies, or auth tokens) and encrypted with AES256-SSE.
+
 ## Suggested Next Steps (Optional)
 
 Future enhancements to consider:

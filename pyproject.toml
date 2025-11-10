@@ -24,6 +24,12 @@ dev = [
   "ruff>=0.1.0",
   "mypy>=1.7.0"
 ]
+playwright = [
+  "playwright>=1.40.0"
+]
+export = [
+  "boto3>=1.34.0"
+]
 
 [project.scripts]
 mcp-devdiag = "mcp_devdiag.server:main"
