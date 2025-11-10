@@ -28,8 +28,14 @@ Model Context Protocol server for **production-safe autonomous development diagn
 ## Installation
 
 ```bash
+# Latest release
+pip install mcp-devdiag
+
+# Pinned version
+pip install "mcp-devdiag==0.2.0"
+
 # From GitHub
-pip install "mcp-devdiag @ git+https://github.com/leok974/mcp-devdiag.git@v0.1.0"
+pip install "mcp-devdiag @ git+https://github.com/leok974/mcp-devdiag.git@v0.2.0"
 
 # From source
 pip install -e .
@@ -414,6 +420,26 @@ Future enhancements to consider:
    ```
 
 See `TODO.md` for full roadmap with effort estimates.
+
+## Compatibility
+
+| Area                 | Default | Notes                                   |
+|----------------------|---------|-----------------------------------------|
+| Runtime              | HTTP    | Browser driver optional (Playwright)    |
+| Auth                 | JWKS    | RS256; aud = `mcp-devdiag`              |
+| Prod capture         | Off     | No bodies ever; headers redacted        |
+| Probes               | CSP/DOM | Degrades gracefully in HTTP-only        |
+| CI                   | Quick   | `/mcp/diag/quickcheck` HTTP-only        |
+
+## Privacy & Data Handling
+
+- ✅ **No request bodies captured** in any mode
+- ✅ **Auth headers and cookies** are never persisted; deny-list enforced server-side
+- ✅ **Probe allow-list** must explicitly include each URL pattern
+- ✅ **SSRF guard** blocks RFC1918 + 127.0.0.0/8 + 169.254.0.0/16 by default
+- ✅ **Retention** is configurable; default 7 days logs / 30 days metrics
+
+See `SECURITY.md` for complete security documentation and compliance notes.
 
 ## Development
 
