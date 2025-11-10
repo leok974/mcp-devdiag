@@ -73,7 +73,7 @@ redaction:
 mcp-devdiag --stdio
 ```
 
-### VS Code Integration
+### VS Code / Copilot Integration
 
 Add to your `.vscode/settings.json`:
 
@@ -87,6 +87,11 @@ Add to your `.vscode/settings.json`:
   }
 }
 ```
+
+**Copilot Prompts**:
+- "Run mcp.devdiag.status_plus for https://app.example.com and print fixes."
+- "Quickcheck the chat path and propose nginx/header patches for any CSP problems."
+- "Get the probe schema and generate TypeScript types for ProbeResult."
 
 ### Available Tools
 
@@ -110,14 +115,30 @@ Add to your `.vscode/settings.json`:
 
 ### HTTP API Examples
 
-#### Status with scoring (any project)
+#### One-Shot Smoke Test (Copy/Paste)
 
 ```bash
-# One-call status with scoring (HTTP-only safe by default)
-curl -s -G "$HOST/mcp/diag/status_plus" \
-  --data-urlencode "base_url=https://app.example.com" \
-  -H "Authorization: Bearer $READER" | jq
+# Set once
+BASE="$DEVDIAG_URL"        # e.g., https://diag.example.com
+JWT="$DEVDIAG_READER_JWT"  # reader token
+APP="https://app.example.com"
+
+# HTTP-only quickcheck (CI-safe)
+curl -s -X POST "$BASE/mcp/diag/quickcheck" \
+  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d "{\"url\":\"$APP/chat/\"}" | jq
+
+# Status + scoring + fix recipes
+curl -s -G "$BASE/mcp/diag/status_plus" \
+  --data-urlencode "base_url=$APP" \
+  -H "Authorization: Bearer $JWT" | jq
+
+# ProbeResult schema (client integration)
+curl -s "$BASE/mcp/diag/schema/probe_result" \
+  -H "Authorization: Bearer $JWT" | jq
 ```
+
+If `ok:false` and `score>0`, you'll get `fixes{code:[steps...]}` ready to surface in UIs.
 
 #### Targeted CSP check (CI use)
 
@@ -178,6 +199,32 @@ Set `PROM_URL` environment variable:
 export PROM_URL=http://prometheus:9090
 mcp-devdiag --stdio
 ```
+
+#### Grafana Quick Panels
+
+Paste these into a Grafana dashboard:
+
+**Stat Panel**: HTTP 5xx Rate
+- Query: `sum(rate(http_requests_total{code=~"5.."}[5m]))`
+- Unit: req/s
+- Thresholds: red > 0.5
+
+**Stat Panel**: HTTP 4xx Rate
+- Query: `sum(rate(http_requests_total{code=~"4.."}[5m]))`
+- Unit: req/s
+- Thresholds: warn > 2.0
+
+**Gauge**: Probe Success
+- Query: `avg(probe_success{job=~"blackbox.*"})`
+- Min: 0, Max: 1
+- Thresholds: red < 0.98
+
+**Bar Gauge**: Top Error Buckets
+- Data Source: DevDiag JSON API
+- Endpoint: `/mcp/diag/status_plus?base_url=...`
+- Map `.problems[]` counts
+
+**Tip**: Expose DevDiag as a Grafana JSON API data source and query `status_plus` directly.
 
 ## Development
 

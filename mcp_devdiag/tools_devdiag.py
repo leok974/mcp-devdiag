@@ -65,29 +65,47 @@ async def get_metrics(window: str = "15m", auth_header: str | None = None) -> Di
     except AuthorizationError as e:
         return {"ok": False, "error": str(e)}
 
-    # Query Prometheus for metrics
-    query = f'rate(http_server_requests_seconds_count{{job="api"}}[{window}])'
+    # Universal HTTP metrics queries (no app-specific labels required)
+    QUERIES = {
+        "http_5xx_rate": 'sum(rate(http_requests_total{code=~"5.."}[5m]))',
+        "http_4xx_rate": 'sum(rate(http_requests_total{code=~"4.."}[5m]))',
+        "latency_p90": "histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+        "probe_success": 'avg(probe_success{job=~"blackbox.*"})',
+    }
+
+    results = {}
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"{PROM_URL}/api/v1/query", params={"query": query})
-            prom_data = response.json()
+            for name, query in QUERIES.items():
+                try:
+                    response = await client.get(f"{PROM_URL}/api/v1/query", params={"query": query})
+                    prom_data = response.json()
 
-        # Parse Prometheus response for basic rates
-        # In production, you'd parse the actual metric data here
+                    # Extract scalar value if available
+                    if prom_data.get("status") == "success":
+                        result = prom_data.get("data", {}).get("result", [])
+                        if result and len(result) > 0:
+                            value = result[0].get("value", [None, None])[1]
+                            results[name] = float(value) if value else 0.0
+                        else:
+                            results[name] = 0.0
+                    else:
+                        results[name] = None
+                except Exception as e:
+                    results[name] = {"error": str(e)}
+
         return {
             "ok": True,
             "window": window,
-            "rates": {"2xx": 0, "4xx": 0, "5xx": 0},  # TODO: parse from prom_data
-            "latency_ms": {"p50": 0, "p90": 0},  # TODO: query latency metrics
-            "prom_status": prom_data.get("status", "unknown"),
+            "metrics": results,
+            "prom_url": PROM_URL,
         }
     except Exception as e:
         # Fallback to stub data if Prometheus is unavailable
         return {
-            "ok": True,
+            "ok": False,
             "window": window,
-            "rates": {"2xx": 0, "4xx": 0, "5xx": 0},
-            "latency_ms": {"p50": 0, "p90": 0},
+            "metrics": {},
             "prom_error": str(e),
         }
 
