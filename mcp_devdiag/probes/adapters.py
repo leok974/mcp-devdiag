@@ -120,6 +120,7 @@ async def get_driver(
             # Try importing playwright for standalone use
             try:
                 from .adapters_playwright import PlaywrightDriver as StandalonePlaywright
+
                 drv = StandalonePlaywright()
                 await drv.start()
                 return drv

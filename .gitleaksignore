@@ -1,0 +1,8 @@
+# Gitleaks ignore file
+# Uses commit:file:line fingerprint format
+# To generate: gitleaks detect --report-format json --report-path report.json
+# Then extract fingerprints from the report
+
+# No current false positives - add fingerprints as needed
+# Format: <commit-sha>:<file-path>:<line-number>
+

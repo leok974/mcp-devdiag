@@ -1,0 +1,30 @@
+# Auto-provision DevDiag PostgreSQL datasource for Grafana
+# Place this file in: grafana/provisioning/datasources/
+#
+# Required environment variables:
+#   DEVDIAG_PG_HOST  - PostgreSQL host (e.g., localhost)
+#   DEVDIAG_PG_USER  - Database user (e.g., grafana or devdiag)
+#   DEVDIAG_PG_DB    - Database name (devdiag)
+#   DEVDIAG_PG_PASS  - Database password
+
+apiVersion: 1
+
+datasources:
+  - name: DevDiag Postgres
+    type: postgres
+    access: proxy
+    url: ${DEVDIAG_PG_HOST}:5432
+    database: ${DEVDIAG_PG_DB}
+    user: ${DEVDIAG_PG_USER}
+    secureJsonData:
+      password: ${DEVDIAG_PG_PASS}
+    jsonData:
+      sslmode: disable          # Use 'require' for production
+      maxOpenConns: 10          # Connection pool size
+      maxIdleConns: 5
+      connMaxLifetime: 14400    # 4 hours
+      postgresVersion: 1600     # PostgreSQL 16.x
+      timescaledb: false
+    editable: true
+    version: 1
+    isDefault: false

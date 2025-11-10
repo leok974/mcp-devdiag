@@ -1,0 +1,72 @@
+{
+  "uid": "devdiag-alert-ttr-regression",
+  "title": "DevDiag: Median TTR >2 days (7d)",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "devdiag-postgres",
+      "model": {
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ttr_days)/86400) AS median_ttr_days\nFROM devdiag.v_ttr_days\nWHERE first_seen_day >= CURRENT_DATE - INTERVAL '7 days';"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 0,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [2],
+              "type": "gt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": ["A"]
+            },
+            "reducer": {
+              "params": [],
+              "type": "last"
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "reducer": "last",
+        "type": "classic_conditions"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Alerting",
+  "for": "30m",
+  "annotations": {
+    "description": "The median time-to-remediation for problems in the last 7 days exceeds 2 days, indicating slower problem resolution.",
+    "runbook_url": "https://github.com/leok974/mcp-devdiag/blob/main/deployments/grafana/ALERT_QUERIES.md#alert-3-median-ttr-regressed-2-days-over-7d-window",
+    "summary": "Time-to-remediation has degraded"
+  },
+  "labels": {
+    "severity": "warning",
+    "team": "devdiag",
+    "component": "learning"
+  },
+  "folderUID": "devdiag-alerts"
+}

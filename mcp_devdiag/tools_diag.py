@@ -26,16 +26,19 @@ mcp = FastMCP("DevDiag Probes")
 # Load configuration
 CONFIG = load_config()
 
+# Cache for learning: previous runs for success detection
+_LAST_RUNS: dict[str, dict[str, Any]] = {}
+
 # Private/reserved IP ranges (SSRF protection)
 PRIVATE_NETWORKS = [
-    ipaddress.ip_network("127.0.0.0/8"),    # Loopback
-    ipaddress.ip_network("10.0.0.0/8"),     # Private
+    ipaddress.ip_network("127.0.0.0/8"),  # Loopback
+    ipaddress.ip_network("10.0.0.0/8"),  # Private
     ipaddress.ip_network("172.16.0.0/12"),  # Private
-    ipaddress.ip_network("192.168.0.0/16"), # Private
-    ipaddress.ip_network("169.254.0.0/16"), # Link-local
-    ipaddress.ip_network("::1/128"),        # IPv6 loopback
-    ipaddress.ip_network("fc00::/7"),       # IPv6 private
-    ipaddress.ip_network("fe80::/10"),      # IPv6 link-local
+    ipaddress.ip_network("192.168.0.0/16"),  # Private
+    ipaddress.ip_network("169.254.0.0/16"),  # Link-local
+    ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),  # IPv6 private
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
 
 
@@ -361,13 +364,50 @@ async def diag_status_plus(
             drv, base_url, {"diag": CONFIG.__dict__.get("diag", {})}, preset
         )
 
-        return {
+        # Build response payload
+        response = {
             "ok": not result.get("problems", []),
             "score": result.get("score", 0),
             "severity": result.get("severity", "info"),
             "problems": result.get("problems", []),
             "fixes": fixes_for(result.get("problems", [])),
             "evidence": result.get("evidence", {}),
+            "base_url": base_url,
+            "preset": preset,
         }
+
+        # Closed-loop learning: record run + detect successes
+        try:
+            if CONFIG.learn.enabled:
+                from .tools_learn import learn_record_run
+                from .learning.core import Learner
+
+                # Record this run
+                await learn_record_run(response, tenant=CONFIG.tenant)
+
+                # Check for disappeared problems (success detection)
+                key = f"{CONFIG.tenant}:{base_url if not CONFIG.learn.privacy.hash_targets else 'hashed'}"
+                prev = _LAST_RUNS.get(key)
+                _LAST_RUNS[key] = response
+
+                if prev and set(prev["problems"]) - set(response["problems"]):
+                    # Some problems disappeared - credit the fixes
+                    learner = Learner(
+                        store=CONFIG.learn.store,
+                        alpha=CONFIG.learn.alpha,
+                        beta=CONFIG.learn.beta,
+                        min_support=CONFIG.learn.min_support,
+                    )
+                    learner.autolabel_success(
+                        tenant=CONFIG.tenant,
+                        prev_run=prev,
+                        next_run=response,
+                        fixes_map=response["fixes"],
+                    )
+        except Exception:
+            # Never fail the request due to learning errors
+            pass
+
+        return response
     finally:
         await drv.dispose()

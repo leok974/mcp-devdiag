@@ -1,0 +1,26 @@
+name: Secret Scanning
+
+on:
+  push:
+    branches: [main, feat/*, fix/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gitleaks:
+    name: Scan for secrets with Gitleaks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for comprehensive scan
+      
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: true
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+          GITLEAKS_ENABLE_SUMMARY: true

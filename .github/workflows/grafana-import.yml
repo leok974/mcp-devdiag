@@ -1,0 +1,88 @@
+name: Grafana Import
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "deployments/grafana/dashboards/**.json"
+      - "deployments/grafana/provisioning/datasources/**.yaml"
+      - "scripts/grafana/**.sh"
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client
+      
+      - name: Database health check - Schema validation
+        env:
+          PGPASSWORD: ${{ secrets.DEVDIAG_PG_PASS }}
+        run: |
+          echo "→ Validating PostgreSQL schema..."
+          
+          # Extract host and port from DEVDIAG_PG_HOST (format: host:port)
+          PG_HOST=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f1)
+          PG_PORT=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f2)
+          
+          # Check all 6 views exist
+          VIEW_COUNT=$(psql -h "$PG_HOST" -p "$PG_PORT" -U "${{ secrets.DEVDIAG_PG_USER }}" -d "${{ secrets.DEVDIAG_PG_DB }}" -Atc "
+            SELECT COUNT(*) 
+            FROM pg_views 
+            WHERE schemaname='devdiag' 
+              AND viewname IN ('v_problem_counts','v_fix_success','v_ttr_days','v_env_diversity','v_fix_ranking','v_recent_activity');
+          ")
+          
+          if [ "$VIEW_COUNT" -ne 6 ]; then
+            echo "❌ Schema validation failed: Expected 6 views, found $VIEW_COUNT"
+            exit 1
+          fi
+          
+          echo "✓ All 6 analytics views present"
+      
+      - name: Database health check - Data freshness
+        env:
+          PGPASSWORD: ${{ secrets.DEVDIAG_PG_PASS }}
+        run: |
+          echo "→ Checking data freshness..."
+          
+          PG_HOST=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f1)
+          PG_PORT=$(echo "${{ secrets.DEVDIAG_PG_HOST }}" | cut -d: -f2)
+          
+          # Check if data exists in last 24h (allow bypass if no recent data)
+          RECENT_ROWS=$(psql -h "$PG_HOST" -p "$PG_PORT" -U "${{ secrets.DEVDIAG_PG_USER }}" -d "${{ secrets.DEVDIAG_PG_DB }}" -Atc "
+            SELECT CASE WHEN EXISTS(
+              SELECT 1 FROM devdiag.diag_run WHERE ts >= NOW() - INTERVAL '24 hours'
+            ) THEN 1 ELSE 0 END;
+          " || echo "0")
+          
+          if [ "$RECENT_ROWS" -eq 0 ]; then
+            echo "⚠️  Warning: No diagnostic runs in last 24 hours (may be expected for staging)"
+          else
+            echo "✓ Data is fresh (runs within 24h)"
+          fi
+      
+      - name: Import datasource to Grafana
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          DEVDIAG_PG_HOST: ${{ secrets.DEVDIAG_PG_HOST }}
+          DEVDIAG_PG_USER: ${{ secrets.DEVDIAG_PG_USER }}
+          DEVDIAG_PG_PASS: ${{ secrets.DEVDIAG_PG_PASS }}
+          DEVDIAG_PG_DB: ${{ secrets.DEVDIAG_PG_DB }}
+        run: |
+          chmod +x scripts/grafana/import-datasource.sh
+          ./scripts/grafana/import-datasource.sh
+      
+      - name: Import dashboard to Grafana
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          chmod +x scripts/grafana/import-dashboard.sh
+          ./scripts/grafana/import-dashboard.sh deployments/grafana/dashboards/devdiag-analytics.json
+      
+      - name: Summary
+        run: |
+          echo "✓ Grafana import completed"
+          echo "Dashboard URL: ${{ secrets.GRAFANA_URL }}/dashboards"
