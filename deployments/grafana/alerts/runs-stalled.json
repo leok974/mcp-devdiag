@@ -1,24 +1,31 @@
 {
   "uid": "devdiag-alert-runs-stalled",
   "title": "DevDiag: Diagnostic runs stalled (2h)",
-  "condition": "C",
+  "condition": "B",
   "data": [
     {
       "refId": "A",
       "queryType": "",
       "relativeTimeRange": {
-        "from": 0,
+        "from": 7200,
         "to": 0
       },
       "datasourceUid": "devdiag-postgres",
       "model": {
-        "format": "table",
+        "editorMode": "code",
+        "format": "time_series",
         "rawQuery": true,
-        "rawSql": "SELECT EXTRACT(EPOCH FROM (now() - max(ts))) AS seconds_since\nFROM devdiag.diag_run;"
+        "rawSql": "SELECT\n  ts AS time,\n  1 AS value\nFROM devdiag.diag_run\nWHERE $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 1;",
+        "refId": "A",
+        "sql": {
+          "columns": [{"parameters": [], "type": "function"}],
+          "groupBy": [{"property": {"type": "string"}, "type": "groupBy"}],
+          "limit": 50
+        }
       }
     },
     {
-      "refId": "C",
+      "refId": "B",
       "queryType": "",
       "relativeTimeRange": {
         "from": 0,
@@ -29,28 +36,31 @@
         "conditions": [
           {
             "evaluator": {
-              "params": [7200],
-              "type": "gt"
+              "params": [0, 0],
+              "type": "no_value"
             },
             "operator": {
               "type": "and"
             },
             "query": {
-              "params": ["A"]
+              "params": []
             },
             "reducer": {
               "params": [],
-              "type": "last"
+              "type": "avg"
             },
             "type": "query"
           }
         ],
         "datasource": {
+          "name": "Expression",
           "type": "__expr__",
           "uid": "__expr__"
         },
         "expression": "A",
-        "reducer": "last",
+        "intervalMs": 1000,
+        "maxDataPoints": 43200,
+        "refId": "B",
         "type": "classic_conditions"
       }
     }
@@ -70,3 +80,4 @@
   },
   "folderUID": "devdiag-alerts"
 }
+
