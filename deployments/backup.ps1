@@ -29,6 +29,8 @@ $env:PGPASSWORD = $env:DEVDIAG_PG_PASS
 try {
     # Run pg_dump using Docker container
     docker exec devdiag-postgres pg_dump `
+        -h $DB_HOST `
+        -p $DB_PORT `
         -U $DB_USER `
         -d $DB_NAME `
         -Fc `
