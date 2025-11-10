@@ -1,4 +1,32 @@
-## Production-Safe DevDiag with RBAC, Sampling, Probes, and Policy Tests
+## Summary
+
+Brief description of changes.
+
+## Checklist
+
+- [ ] Tests added/updated
+- [ ] Security: no bodies captured; headers deny-list intact
+- [ ] URL allow-list enforced (if touching probe logic)
+- [ ] CI quickcheck green
+- [ ] Documentation updated (if needed)
+
+## How to test
+
+```bash
+# Run tests
+pytest -q
+
+# Smoke test (if applicable)
+curl -s -X POST "$BASE/mcp/diag/quickcheck" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"$APP/chat/\"}" | jq
+```
+
+## Related issues
+
+Closes #(issue number)
+
 
 ### Summary
 
