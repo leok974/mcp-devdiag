@@ -13,6 +13,7 @@ retention:
   metrics_ttl_days: 30
 rbac:
   provider: jwt
+  jwks_url: "https://auth.example.com/.well-known/jwks.json"
   roles:
     - name: reader
       can: [get_status, get_network_summary, get_metrics, get_request_diagnostics]

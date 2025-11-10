@@ -6,6 +6,7 @@ import httpx
 from fastmcp import FastMCP
 
 from .config import load_config
+from .limits import guard
 from .probes.adapters import get_driver
 from .probes import (
     dom_overlays,
@@ -57,6 +58,7 @@ async def diag_bundle(url: str, driver: Optional[str] = None, preset: Optional[s
         Aggregated problems, remediation, evidence, and severity score
     """
     _assert_allowed(url)
+    guard(CONFIG.tenant, "diag_bundle")
     drv = await get_driver(driver, http_client_factory)
     try:
         return await bundle.run_bundle(drv, url, {"diag": CONFIG.__dict__.get("diag", {})}, preset)
@@ -73,13 +75,13 @@ async def diag_quickcheck(url: str) -> dict:
         url: Target URL to probe
 
     Returns:
-        Quick check result with ok status and CSP problems
+        Probe results using "chat" preset (CSP headers, handshake)
     """
     _assert_allowed(url)
+    guard(CONFIG.tenant, "diag_quickcheck")
     drv = await get_driver("http", http_client_factory)
     try:
-        res = await csp_headers.run(drv, url, CONFIG.__dict__.get("diag", {}).get("csp", {}))
-        return {"ok": not res["problems"], **res}
+        return await bundle.run_bundle(drv, url, {"diag": CONFIG.__dict__.get("diag", {})}, "chat")
     finally:
         await drv.dispose()
 
@@ -274,5 +276,57 @@ async def diag_probe_portal_root(url: str, driver: Optional[str] = None) -> dict
             )
 
         return {"problems": problems, "evidence": evidence, "remediation": remediation}
+    finally:
+        await drv.dispose()
+
+
+@mcp.tool()
+def get_probe_result_schema() -> dict[str, Any]:
+    """
+    Get JSON schema for ProbeResult type.
+
+    Returns:
+        JSON schema for probe result structure
+    """
+    import json
+    import os
+
+    schema_path = os.path.join(os.path.dirname(__file__), "schemas", "probe_result.json")
+    with open(schema_path, "r") as f:
+        return json.load(f)
+
+
+@mcp.tool()
+async def diag_status_plus(
+    base_url: str, preset: str = "app", driver: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Admin-grade status endpoint with scoring and fix recommendations.
+
+    Args:
+        base_url: Target base URL to diagnose
+        preset: Probe preset ("chat", "embed", "app", "full")
+        driver: Driver type or None for auto-detect
+
+    Returns:
+        Status with ok flag, score, problems, fixes, and evidence
+    """
+    _assert_allowed(base_url)
+    guard(CONFIG.tenant, "diag_status_plus")
+
+    drv = await get_driver(driver, http_client_factory)
+    try:
+        result = await bundle.run_bundle(
+            drv, base_url, {"diag": CONFIG.__dict__.get("diag", {})}, preset
+        )
+
+        return {
+            "ok": not result.get("problems", []),
+            "score": result.get("score", 0),
+            "severity": result.get("severity", "info"),
+            "problems": result.get("problems", []),
+            "fixes": fixes_for(result.get("problems", [])),
+            "evidence": result.get("evidence", {}),
+        }
     finally:
         await drv.dispose()

@@ -96,12 +96,48 @@ Add to your `.vscode/settings.json`:
 - `get_network_summary()` - Aggregated network metrics
 - `get_metrics(window)` - Prometheus-backed rates and latencies
 - `get_request_diagnostics(url, method)` - Live probe (allowlist-only)
+- `diag_status_plus(base_url, preset)` - Admin-grade status with scoring
+- `diag_quickcheck(url)` - Fast HTTP-only CSP/embedding check (CI-safe)
+- `diag_bundle(url, driver, preset)` - Multi-probe diagnostic bundle
+- `diag_probe_csp_headers(url)` - CSP and iframe compatibility check
+- `diag_remediation(problems)` - Get fixes for problem codes
 
 #### Operator Role
 
 - `set_mode(mode, ttl_seconds)` - Change operating mode
 - `export_snapshot()` - Bundle logs for incident analysis
 - `compare_envs(a, b)` - Diff environment configurations
+
+### HTTP API Examples
+
+#### Status with scoring (any project)
+
+```bash
+# One-call status with scoring (HTTP-only safe by default)
+curl -s -G "$HOST/mcp/diag/status_plus" \
+  --data-urlencode "base_url=https://app.example.com" \
+  -H "Authorization: Bearer $READER" | jq
+```
+
+#### Targeted CSP check (CI use)
+
+```bash
+# CSP headers validation for chat embedding
+curl -s -X POST "$HOST/mcp/diag/probe_csp_headers" \
+  -H "Authorization: Bearer $READER" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://app.example.com/chat/"}' | jq
+```
+
+#### Bundle with preset
+
+```bash
+# Full diagnostic bundle with "app" preset
+curl -s -X POST "$HOST/mcp/diag/bundle" \
+  -H "Authorization: Bearer $READER" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://app.example.com", "preset":"app"}' | jq
+```
 
 ## Limitations
 

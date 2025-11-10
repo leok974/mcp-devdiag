@@ -1,0 +1,37 @@
+# DevDiag Quickcheck - HTTP-only diagnostic validation for CI
+name: DevDiag Quickcheck
+
+on:
+  pull_request:
+    paths:
+      - "**/*.conf"
+      - "**/*.nginx"
+      - "**/headers"
+      - "devdiag.yaml"
+      - "**/*.html"
+  workflow_dispatch:
+
+jobs:
+  quickcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run DevDiag quickcheck probe
+        run: |
+          curl -s -X POST "${{ secrets.DEVDIAG_URL }}/mcp/diag/quickcheck" \
+            -H "Authorization: Bearer ${{ secrets.DEVDIAG_READER_JWT }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\":\"${{ vars.APP_ORIGIN }}/chat/\"}" \
+            | jq -e '.problems | length == 0'
+
+      - name: Display results on failure
+        if: failure()
+        run: |
+          echo "Quickcheck failed - CSP or embedding issues detected"
+          curl -s -X POST "${{ secrets.DEVDIAG_URL }}/mcp/diag/quickcheck" \
+            -H "Authorization: Bearer ${{ secrets.DEVDIAG_READER_JWT }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\":\"${{ vars.APP_ORIGIN }}/chat/\"}" \
+            | jq '.'

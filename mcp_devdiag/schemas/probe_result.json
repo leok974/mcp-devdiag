@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schema.mcp-devdiag/probe-result.json",
+  "title": "ProbeResult",
+  "description": "Standardized diagnostic probe result schema",
+  "type": "object",
+  "properties": {
+    "probe": {
+      "type": "string",
+      "description": "Probe identifier (e.g., 'csp_headers', 'dom_overlays')",
+      "examples": ["csp_headers", "dom_overlays", "handshake"]
+    },
+    "problems": {
+      "type": "array",
+      "description": "List of problem codes detected",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["IFRAME_FRAME_ANCESTORS_BLOCKED", "CSP_INLINE_BLOCKED"]]
+    },
+    "remediation": {
+      "type": "array",
+      "description": "Suggested fixes for detected problems",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Diagnostic evidence (headers, selectors, timings, etc.)",
+      "additionalProperties": true
+    },
+    "severity": {
+      "type": "string",
+      "description": "Overall severity level based on problem scoring",
+      "enum": ["info", "warn", "error", "critical"]
+    }
+  },
+  "required": ["problems", "evidence"],
+  "additionalProperties": false
+}
