@@ -4,7 +4,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-devdiag.svg)](https://pypi.org/project/mcp-devdiag/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-31_passing-brightgreen.svg)](#)
-[![Release](https://img.shields.io/github/v/tag/leok974/mcp-devdiag)](https://github.com/leok974/mcp-devdiag/tags)
+[![Release](https://img.shields.io/github/v/release/leok974/mcp-devdiag)](https://github.com/leok974/mcp-devdiag/releases)
+[![HTTP Smoke](https://github.com/leok974/mcp-devdiag/actions/workflows/devdiag-http-smoke.yml/badge.svg)](https://github.com/leok974/mcp-devdiag/actions/workflows/devdiag-http-smoke.yml)
+[![MCP Quickcheck](https://github.com/leok974/mcp-devdiag/actions/workflows/devdiag-mcp-quickcheck.yml/badge.svg)](https://github.com/leok974/mcp-devdiag/actions/workflows/devdiag-mcp-quickcheck.yml)
 
 Model Context Protocol server for **production-safe autonomous development diagnostics**. Provides tools for reading logs, environment state, CORS configuration, network summaries, and live probing with role-based access control.
 

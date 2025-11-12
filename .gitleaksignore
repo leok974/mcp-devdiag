@@ -3,6 +3,8 @@
 # To generate: gitleaks detect --report-format json --report-path report.json
 # Then extract fingerprints from the report
 
-# No current false positives - add fingerprints as needed
-# Format: <commit-sha>:<file-path>:<line-number>
+# Documentation examples - not real secrets
+infra/README.md:curl-auth-header:387
+infra/APPLYLENS_INTEGRATION.md:*
+RELEASE_NOTES_v0.4.0.md:*
 
