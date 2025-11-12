@@ -5,8 +5,11 @@ from urllib.parse import urlparse
 import fnmatch
 import shutil
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, AnyHttpUrl, Field, field_validator
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from jose import jwt, jwk
 from jose.utils import base64url_decode
 import requests
@@ -34,6 +37,26 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
 # Host allowlist for target URL diagnostics (exact, subdomain via leading dot, or glob)
 ALLOW_TARGET_HOSTS = [h.strip().lower() for h in os.getenv("ALLOW_TARGET_HOSTS", "").split(",") if h.strip()]
 
+# Tenant-specific allowlists (defense-in-depth)
+TENANT_MAP = {}
+try:
+    TENANT_MAP = json.loads(os.getenv("TENANT_ALLOW_HOSTS_JSON", "{}"))
+except Exception:
+    TENANT_MAP = {}
+
+# Observability
+REQUEST_LOG_JSON = os.getenv("REQUEST_LOG_JSON", "1") == "1"
+RETRY_AFTER = int(os.getenv("RETRY_AFTER_SECONDS", "3"))
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.4.0")
+
+# Prometheus metrics
+HTTP_REQS = Counter("devdiag_http_requests_total", "HTTP requests", ["path", "method", "code"])
+HTTP_ERRS = Counter("devdiag_http_errors_total", "HTTP errors", ["path", "code"])
+HTTP_LAT = Histogram("devdiag_http_duration_seconds", "HTTP latency", ["path", "method"])
+
+# Safe Playwright flags (when browser automation is enabled)
+PW_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+
 # Concurrency control
 _sem = threading.Semaphore(MAX_CONCURRENT)
 
@@ -60,7 +83,11 @@ def run_devdiag_cli(url: str, preset: str, suppress: Optional[list[str]], extra_
     # Acquire concurrency slot
     acquired = _sem.acquire(timeout=CLI_TIMEOUT)
     if not acquired:
-        raise HTTPException(status_code=503, detail="Busy: concurrent runs at capacity")
+        raise HTTPException(
+            status_code=503,
+            detail="Busy: concurrent runs at capacity",
+            headers={"Retry-After": str(RETRY_AFTER)}
+        )
     
     try:
         out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=CLI_TIMEOUT)
@@ -130,7 +157,11 @@ def rate_limit():
         _last_refill = now
         _tokens = min(RATE_LIMIT_RPS, _tokens + delta * RATE_LIMIT_RPS)
         if _tokens < 1.0:
-            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(RETRY_AFTER)}
+            )
         _tokens -= 1.0
 
 # --------------------------------------------------------------------------------------
@@ -143,17 +174,28 @@ class DiagRequest(BaseModel):
     preset: Preset = "app"
     suppress: Optional[list[str]] = Field(default=None, description="Problem codes to suppress")
     extra_args: Optional[list[str]] = Field(default=None, description="Extra CLI flags to pass through")
+    tenant: Optional[str] = Field(default=None, description="Tenant ID for tenant-specific allowlist")
     
     # Server-side allowlist check to prevent SSRF even if caller forgot to gate it
+    # Defense-in-depth: backend proxy + server allowlist + per-tenant allowlist
     @field_validator("url")
     @classmethod
-    def check_allowlist(cls, v: AnyHttpUrl) -> AnyHttpUrl:
-        if not ALLOW_TARGET_HOSTS:
-            return v
+    def check_allowlist(cls, v: AnyHttpUrl, info) -> AnyHttpUrl:
         host = urlparse(str(v)).hostname or ""
         host = host.lower()
-        # match exact host, leading-dot suffix (.example.com), or glob (pr-*.example.com)
-        for pattern in ALLOW_TARGET_HOSTS:
+        
+        # Determine which allowlist to use
+        tenant = (info.data or {}).get("tenant")
+        if tenant and tenant in TENANT_MAP:
+            allowed = TENANT_MAP[tenant]
+        else:
+            allowed = ALLOW_TARGET_HOSTS
+        
+        if not allowed:
+            return v  # No restrictions if allowlist is empty
+        
+        # Match exact host, leading-dot suffix (.example.com), or glob (pr-*.example.com)
+        for pattern in allowed:
             if pattern.startswith("."):
                 if host == pattern[1:] or host.endswith(pattern):
                     return v
@@ -162,7 +204,9 @@ class DiagRequest(BaseModel):
                     return v
             elif host == pattern:
                 return v
-        raise ValueError(f"target host '{host}' not allowed by server ALLOW_TARGET_HOSTS")
+        
+        tenant_label = f"tenant '{tenant}'" if tenant else "default"
+        raise ValueError(f"target host '{host}' not allowed for {tenant_label}")
 
 class DiagResponse(BaseModel):
     ok: bool
@@ -196,24 +240,74 @@ def _is_private_ip(url: str) -> bool:
 # --------------------------------------------------------------------------------------
 # App
 # --------------------------------------------------------------------------------------
-app = FastAPI(title="DevDiag HTTP Wrapper", version="0.1.0")
+app = FastAPI(
+    title="DevDiag HTTP Wrapper",
+    description="Server-side security wrapper for diagnostic CLI",
+    version=SERVICE_VERSION,
+)
 
-# Request ID middleware
+# Custom OpenAPI schema with security scheme
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title="DevDiag HTTP", version=SERVICE_VERSION, routes=app.routes)
+    schema.setdefault("components", {}).setdefault("securitySchemes", {})["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+    for p, ops in schema.get("paths", {}).items():
+        if p == "/diag/run":
+            for m in ops.values():
+                m["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi  # type: ignore
+
+# Middleware: structured logging + request ID + metrics
 @app.middleware("http")
-async def add_request_id(request: Request, call_next):
-    rid = request.headers.get("x-request-id", str(uuid.uuid4()))
-    start = time.time()
-    response = await call_next(request)
-    dur = (time.time() - start) * 1000
-    logging.info(json.dumps({
-        "event": "http_access",
-        "rid": rid,
-        "method": request.method,
-        "path": request.url.path,
-        "status": response.status_code,
-        "ms": round(dur, 2),
-    }))
+async def access_log(request: Request, call_next):
+    rid = request.headers.get("x-request-id") or str(uuid.uuid4())
+    t0 = time.time()
+    try:
+        response: Response = await call_next(request)
+    except HTTPException as e:
+        dur = time.time() - t0
+        HTTP_ERRS.labels(request.url.path, e.status_code).inc()
+        if REQUEST_LOG_JSON:
+            print(
+                json.dumps(
+                    {
+                        "event": "http_error",
+                        "rid": rid,
+                        "path": request.url.path,
+                        "method": request.method,
+                        "status": e.status_code,
+                        "ms": round(dur * 1000, 2),
+                    }
+                ),
+                flush=True,
+            )
+        raise
+    dur = time.time() - t0
     response.headers["x-request-id"] = rid
+    HTTP_REQS.labels(request.url.path, request.method, response.status_code).inc()
+    HTTP_LAT.labels(request.url.path, request.method).observe(dur)
+    if REQUEST_LOG_JSON:
+        print(
+            json.dumps(
+                {
+                    "event": "http_access",
+                    "rid": rid,
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status": response.status_code,
+                    "ms": round(dur * 1000, 2),
+                }
+            ),
+            flush=True,
+        )
     return response
 
 if ALLOWED_ORIGINS:
@@ -227,11 +321,16 @@ if ALLOWED_ORIGINS:
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True, "service": "devdiag-http", "version": "0.1.0"}
+    return {"ok": True, "service": "devdiag-http", "version": SERVICE_VERSION}
 
 @app.head("/healthz")
 def healthz_head():
     return Response(status_code=200)
+
+@app.get("/version")
+def version():
+    """Return service version for monitoring."""
+    return {"service": "devdiag-http", "version": SERVICE_VERSION}
 
 @app.get("/selfcheck")
 def selfcheck():
@@ -267,8 +366,12 @@ def ready():
 
 @app.get("/metrics")
 def metrics():
-    """Prometheus-compatible metrics endpoint"""
-    lines = [
+    """Prometheus-compatible metrics endpoint with native client metrics."""
+    # Start with prometheus_client metrics
+    prom_output = generate_latest().decode("utf-8")
+    
+    # Add custom config gauges
+    custom_metrics = [
         '# HELP devdiag_http_up 1 if server is healthy',
         '# TYPE devdiag_http_up gauge',
         'devdiag_http_up 1',
@@ -282,7 +385,9 @@ def metrics():
         '# TYPE devdiag_http_timeout_seconds gauge',
         f'devdiag_http_timeout_seconds {CLI_TIMEOUT}',
     ]
-    return Response("\n".join(lines) + "\n", media_type="text/plain")
+    
+    combined = prom_output + "\n" + "\n".join(custom_metrics) + "\n"
+    return Response(combined, media_type=CONTENT_TYPE_LATEST)
 
 @app.get("/probes")
 def probes():

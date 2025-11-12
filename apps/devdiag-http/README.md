@@ -31,15 +31,28 @@ curl -s http://127.0.0.1:8080/healthz
 
 Environment variables:
 
+### Authentication & Security
 - `JWKS_URL`: JWKS endpoint for JWT validation (empty = auth disabled)
 - `JWT_AUD`: JWT audience claim to verify (default: `mcp-devdiag`)
-- `RATE_LIMIT_RPS`: Requests per second limit (default: 2.0)
 - `ALLOW_PRIVATE_IP`: Allow private/loopback IPs (default: 0, set 1 for local testing)
+
+### Rate Limiting & Capacity
+- `RATE_LIMIT_RPS`: Requests per second limit (default: 2.0)
+- `MAX_CONCURRENT`: Maximum concurrent diagnostic runs (default: 2)
+- `RETRY_AFTER_SECONDS`: Retry-After header value for 429/503 responses (default: 3)
+
+### CORS & Target Allowlists
 - `ALLOWED_ORIGINS`: CORS origins (comma-separated, default: `http://127.0.0.1:19010,http://localhost:19010`)
 - `ALLOW_TARGET_HOSTS`: Server-side allowlist for target URLs (comma-separated, supports exact, `.domain.com`, and `pr-*.domain.com` patterns)
+- `TENANT_ALLOW_HOSTS_JSON`: Per-tenant allowlists as JSON object (defense-in-depth, optional)
+
+### CLI & Timeouts
 - `DEVDIAG_CLI`: CLI binary name (default: `mcp-devdiag`)
 - `DEVDIAG_TIMEOUT_S`: CLI timeout in seconds (default: 180)
-- `MAX_CONCURRENT`: Maximum concurrent diagnostic runs (default: 2)
+
+### Observability
+- `REQUEST_LOG_JSON`: Enable structured JSON access logs (default: 1)
+- `SERVICE_VERSION`: Service version for /version endpoint (default: 0.4.0)
 
 ### Target Host Allowlist
 
@@ -64,6 +77,22 @@ ALLOW_TARGET_HOSTS=.ledger-mind.org,app.example.com,pr-*.example.com
 
 **Best practice**: Use `.ledger-mind.org` for dynamic preview environments.
 
+### Per-Tenant Allowlists (Defense-in-Depth)
+
+For shared infrastructure, use `TENANT_ALLOW_HOSTS_JSON` to isolate tenants:
+
+```bash
+TENANT_ALLOW_HOSTS_JSON='{"applylens":[".applylens.app"],"tenant2":[".example.com"]}'
+```
+
+Client includes `tenant` field in request:
+
+```json
+{"url":"https://applylens.app","preset":"app","tenant":"applylens"}
+```
+
+Server validates against tenant-specific allowlist. Falls back to `ALLOW_TARGET_HOSTS` if tenant not found.
+
 ## API Endpoints
 
 ### `GET /healthz`
@@ -71,11 +100,19 @@ Health check endpoint (also supports HEAD).
 
 **Response:**
 ```json
-{"ok": true, "service": "devdiag-http", "version": "0.1.0"}
+{"ok": true, "service": "devdiag-http", "version": "0.4.0"}
 ```
 
 ### `HEAD /healthz`
 Lightweight health check (no body).
+
+### `GET /version`
+Service version information for monitoring and debugging.
+
+**Response:**
+```json
+{"service": "devdiag-http", "version": "0.4.0"}
+```
 
 ### `GET /selfcheck`
 Quick diagnostics for ops: confirms CLI presence and prints version.
@@ -119,16 +156,44 @@ readinessProbe:
 ```
 
 ### `GET /metrics`
-Prometheus-compatible metrics endpoint.
+Prometheus-compatible metrics endpoint with native prometheus_client integration.
 
 **Response (text/plain):**
 ```
+# Prometheus client metrics (requests, errors, latency)
+# HELP devdiag_http_requests_total HTTP requests
+# TYPE devdiag_http_requests_total counter
+devdiag_http_requests_total{code="200",method="GET",path="/healthz"} 42.0
+# HELP devdiag_http_errors_total HTTP errors
+# TYPE devdiag_http_errors_total counter
+devdiag_http_errors_total{code="429",path="/diag/run"} 2.0
+# HELP devdiag_http_duration_seconds HTTP latency
+# TYPE devdiag_http_duration_seconds histogram
+devdiag_http_duration_seconds_bucket{le="0.5",method="POST",path="/diag/run"} 8.0
+devdiag_http_duration_seconds_count{method="POST",path="/diag/run"} 10.0
+
+# Custom config gauges
 # HELP devdiag_http_up 1 if server is healthy
 # TYPE devdiag_http_up gauge
 devdiag_http_up 1
 # HELP devdiag_http_rate_limit_rps configured RPS
 # TYPE devdiag_http_rate_limit_rps gauge
 devdiag_http_rate_limit_rps 2.0
+# HELP devdiag_http_max_concurrent configured concurrent runs
+# TYPE devdiag_http_max_concurrent gauge
+devdiag_http_max_concurrent 2
+```
+
+**Useful Prometheus queries:**
+```promql
+# Request rate by path
+rate(devdiag_http_requests_total[5m])
+
+# Error rate
+rate(devdiag_http_errors_total[5m])
+
+# 95th percentile latency
+histogram_quantile(0.95, rate(devdiag_http_duration_seconds_bucket[5m]))
 ```
 
 ### `GET /probes`
@@ -151,9 +216,17 @@ Run diagnostics on a URL.
   "url": "https://example.com",
   "preset": "app",
   "suppress": ["CSP_FRAME_ANCESTORS"],
-  "extra_args": ["--verbose"]
+  "extra_args": ["--verbose"],
+  "tenant": "applylens"
 }
 ```
+
+**Fields:**
+- `url` (required): Target URL to diagnose
+- `preset` (optional): Probe preset (`"chat"`, `"embed"`, `"app"`, `"full"`, default: `"app"`)
+- `suppress` (optional): List of problem codes to suppress (e.g., `["CSP_FRAME_ANCESTORS"]`)
+- `extra_args` (optional): Extra CLI flags to pass through
+- `tenant` (optional): Tenant ID for tenant-specific allowlist validation
 
 **Response:**
 ```json
@@ -169,10 +242,26 @@ Run diagnostics on a URL.
 }
 ```
 
-**Headers (when JWT enabled):**
+**Request Headers:**
 ```
-Authorization: Bearer <JWT_TOKEN>
+Authorization: Bearer <JWT_TOKEN>  (when JWT enabled)
+x-request-id: <uuid>                (optional, echoed back)
 ```
+
+**Response Headers:**
+```
+x-request-id: <uuid>                (request ID for correlation)
+Retry-After: 3                       (on 429 rate limit or 503 capacity)
+```
+
+**Error Responses:**
+- `400`: Invalid URL or blocked by SSRF protection
+- `401`: Missing/invalid JWT token (when auth enabled)
+- `422`: Validation error (e.g., host not in allowlist)
+- `429`: Rate limit exceeded (includes `Retry-After` header)
+- `500`: DevDiag CLI error
+- `503`: At capacity (includes `Retry-After` header)
+- `504`: DevDiag timeout
 
 ## Security
 

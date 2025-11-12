@@ -32,8 +32,20 @@ else
 fi
 echo ""
 
-# Test 2.5: Selfcheck (CLI availability)
-echo "2.5️⃣ Testing GET /selfcheck..."
+# Test 2.5: Version endpoint
+echo "2.5️⃣ Testing GET /version..."
+VERSION=$(curl -sf "$BASE/version")
+echo "$VERSION" | jq .
+if echo "$VERSION" | jq -e '.version' > /dev/null; then
+    echo "✅ Version endpoint passed"
+else
+    echo "❌ Version endpoint failed"
+    exit 1
+fi
+echo ""
+
+# Test 2.6: Selfcheck (CLI availability)
+echo "2.6️⃣ Testing GET /selfcheck..."
 SELFCHECK=$(curl -sf "$BASE/selfcheck")
 echo "$SELFCHECK" | jq .
 if echo "$SELFCHECK" | jq -e '.ok == true' > /dev/null; then
@@ -41,6 +53,17 @@ if echo "$SELFCHECK" | jq -e '.ok == true' > /dev/null; then
 else
     echo "⚠️ Selfcheck failed - CLI may not be installed"
     echo "$SELFCHECK"
+fi
+echo ""
+
+# Test 2.7: OpenAPI security scheme
+echo "2.7️⃣ Testing OpenAPI security scheme..."
+OPENAPI=$(curl -sf "$BASE/openapi.json")
+if echo "$OPENAPI" | jq -e '.components.securitySchemes.BearerAuth.scheme == "bearer"' > /dev/null; then
+    echo "✅ OpenAPI security scheme configured"
+else
+    echo "❌ OpenAPI security scheme missing"
+    exit 1
 fi
 echo ""
 
@@ -111,6 +134,9 @@ echo "🎉 All smoke tests passed!"
 echo ""
 echo "Summary:"
 echo "  ✅ Health check (GET + HEAD)"
+echo "  ✅ Version endpoint"
+echo "  ✅ Selfcheck (CLI availability)"
+echo "  ✅ OpenAPI security scheme"
 echo "  ✅ Metrics endpoint"
 echo "  ✅ Probes list"
 echo "  ✅ Diagnostic run"
