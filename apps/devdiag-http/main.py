@@ -1,13 +1,19 @@
 from __future__ import annotations
 import json, os, subprocess, time, ipaddress, uuid, logging, sys
 from typing import Literal, Optional, Any, Dict
+from urllib.parse import urlparse
+import fnmatch
+import shutil
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, AnyHttpUrl, Field
+from pydantic import BaseModel, AnyHttpUrl, Field, field_validator
 from jose import jwt, jwk
 from jose.utils import base64url_decode
 import requests
 import threading
+from dotenv import load_dotenv
+
+load_dotenv()  # load .env if present (dev/local)
 
 # --------------------------------------------------------------------------------------
 # Logging
@@ -25,6 +31,8 @@ ALLOWED_ORIGINS = [o for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o]
 CLI_BIN = os.getenv("DEVDIAG_CLI", "mcp-devdiag")
 CLI_TIMEOUT = int(os.getenv("DEVDIAG_TIMEOUT_S", "180"))
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
+# Host allowlist for target URL diagnostics (exact, subdomain via leading dot, or glob)
+ALLOW_TARGET_HOSTS = [h.strip().lower() for h in os.getenv("ALLOW_TARGET_HOSTS", "").split(",") if h.strip()]
 
 # Concurrency control
 _sem = threading.Semaphore(MAX_CONCURRENT)
@@ -44,6 +52,10 @@ def run_devdiag_cli(url: str, preset: str, suppress: Optional[list[str]], extra_
         for code in suppress:
             cmd += ["--suppress", code]
     cmd += extra_args
+    
+    # Fail fast if CLI is missing
+    if shutil.which(CLI_BIN) is None:
+        raise HTTPException(status_code=500, detail=f"DevDiag CLI '{CLI_BIN}' not found in PATH")
     
     # Acquire concurrency slot
     acquired = _sem.acquire(timeout=CLI_TIMEOUT)
@@ -131,6 +143,26 @@ class DiagRequest(BaseModel):
     preset: Preset = "app"
     suppress: Optional[list[str]] = Field(default=None, description="Problem codes to suppress")
     extra_args: Optional[list[str]] = Field(default=None, description="Extra CLI flags to pass through")
+    
+    # Server-side allowlist check to prevent SSRF even if caller forgot to gate it
+    @field_validator("url")
+    @classmethod
+    def check_allowlist(cls, v: AnyHttpUrl) -> AnyHttpUrl:
+        if not ALLOW_TARGET_HOSTS:
+            return v
+        host = urlparse(str(v)).hostname or ""
+        host = host.lower()
+        # match exact host, leading-dot suffix (.example.com), or glob (pr-*.example.com)
+        for pattern in ALLOW_TARGET_HOSTS:
+            if pattern.startswith("."):
+                if host == pattern[1:] or host.endswith(pattern):
+                    return v
+            elif any(ch in pattern for ch in "*?[]"):
+                if fnmatch.fnmatch(host, pattern):
+                    return v
+            elif host == pattern:
+                return v
+        raise ValueError(f"target host '{host}' not allowed by server ALLOW_TARGET_HOSTS")
 
 class DiagResponse(BaseModel):
     ok: bool
@@ -200,6 +232,38 @@ def healthz():
 @app.head("/healthz")
 def healthz_head():
     return Response(status_code=200)
+
+@app.get("/selfcheck")
+def selfcheck():
+    """Quick diagnostics for ops: confirms CLI presence and prints version."""
+    try:
+        if shutil.which(CLI_BIN) is None:
+            return {"ok": False, "cli": CLI_BIN, "message": "CLI not found in PATH"}
+        out = subprocess.check_output([CLI_BIN, "--version"], text=True, timeout=10).strip()
+        return {"ok": True, "cli": CLI_BIN, "version": out}
+    except Exception as e:
+        return {"ok": False, "cli": CLI_BIN, "error": str(e)}
+
+@app.get("/ready")
+def ready():
+    """
+    Readiness probe: combines CLI + allowlist + JWKS checks.
+    Fails fast before accepting traffic if critical config is missing.
+    Use for K8s readinessProbe or load balancer health checks.
+    """
+    # 1) CLI present
+    if shutil.which(CLI_BIN) is None:
+        return {"ok": False, "reason": "cli_missing", "cli": CLI_BIN}
+    # 2) Allowlist configured (optional but recommended)
+    if not ALLOW_TARGET_HOSTS:
+        return {"ok": False, "reason": "allowlist_empty"}
+    # 3) JWT/JWKS (optional) — if JWKS_URL set, verify fetchable
+    if JWKS_URL:
+        try:
+            _ = _get_jwks()
+        except Exception as e:
+            return {"ok": False, "reason": "jwks_unreachable", "error": str(e)}
+    return {"ok": True}
 
 @app.get("/metrics")
 def metrics():

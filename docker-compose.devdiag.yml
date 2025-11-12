@@ -3,11 +3,18 @@ services:
     build:
       context: ./apps/devdiag-http
     image: devdiag-http:latest
+    env_file:
+      - .env.devdiag    # create this next to the compose file for local runs
     environment:
-      JWKS_URL: ${JWKS_URL:-}            # e.g. https://YOUR-IDP/.well-known/jwks.json
+      # Compose env_file can set these; below are safe fallbacks:
       JWT_AUD: ${JWT_AUD:-mcp-devdiag}
       RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-2}
       ALLOW_PRIVATE_IP: ${ALLOW_PRIVATE_IP:-0}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:19010,http://localhost:19010}
+      # New server-side allowlist for targets:
+      ALLOW_TARGET_HOSTS: ${ALLOW_TARGET_HOSTS:-.ledger-mind.org,app.ledger-mind.org}
+      # CLI/timeout knobs:
+      DEVDIAG_CLI: ${DEVDIAG_CLI:-mcp-devdiag}
+      DEVDIAG_TIMEOUT_S: ${DEVDIAG_TIMEOUT_S:-180}
     ports:
       - "127.0.0.1:8080:8080"

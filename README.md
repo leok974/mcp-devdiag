@@ -461,6 +461,10 @@ Environment variables:
 - `RATE_LIMIT_RPS`: Requests per second limit (default: 2.0)
 - `ALLOW_PRIVATE_IP`: Allow private/loopback IPs (default: 0, set 1 for local testing)
 - `ALLOWED_ORIGINS`: CORS origins (comma-separated)
+- `ALLOW_TARGET_HOSTS`: Server-side allowlist for target URLs (supports `.domain.com`, exact hosts, `pr-*.domain.com` globs)
+- `DEVDIAG_CLI`: CLI binary name (default: `mcp-devdiag`)
+- `DEVDIAG_TIMEOUT_S`: CLI timeout (default: 180s)
+- `MAX_CONCURRENT`: Max concurrent runs (default: 2)
 
 ### API Endpoints
 
@@ -486,7 +490,10 @@ Response:
 }
 ```
 
-**`GET /healthz`** - Health check  
+**`GET /healthz`** - Health check (also supports HEAD)  
+**`GET /selfcheck`** - Verify CLI availability (useful for debugging 502 errors)  
+**`GET /ready`** - Readiness probe (CLI + allowlist + JWKS checks, use for K8s)  
+**`GET /metrics`** - Prometheus-compatible metrics  
 **`GET /probes`** - List available presets
 
 ### Deployment
@@ -497,19 +504,16 @@ gcloud run deploy devdiag-http \
   --image ghcr.io/leok974/mcp-devdiag/devdiag-http:latest \
   --set-env-vars JWKS_URL=https://YOUR-IDP/.well-known/jwks.json \
   --set-env-vars JWT_AUD=mcp-devdiag \
-  --set-env-vars ALLOWED_ORIGINS=https://evalforge.app
+  --set-env-vars ALLOWED_ORIGINS=https://evalforge.app \
+  --set-env-vars ALLOW_TARGET_HOSTS=.ledger-mind.org
 ```
 
 **Fly.io / Render:** See `apps/devdiag-http/README.md` for full deployment guides.
 
 ### EvalForge Integration
 
-Server config:
-```bash
-export DEVDIAG_BASE=http://127.0.0.1:8080
-```
+**Option 1: Direct Frontend Calls**
 
-Frontend call:
 ```typescript
 const response = await fetch('http://127.0.0.1:8080/diag/run', {
   method: 'POST',
@@ -522,7 +526,36 @@ const response = await fetch('http://127.0.0.1:8080/diag/run', {
 const data = await response.json();
 ```
 
-Full documentation: **[apps/devdiag-http/README.md](apps/devdiag-http/README.md)**
+**Option 2: Backend Proxy (Recommended)**
+
+Hides JWT from frontend, adds host allowlist validation, and provides retry logic.
+
+```python
+# apps/backend/app/routes/devdiag_proxy.py
+from app.routes import devdiag_proxy
+
+app.include_router(devdiag_proxy.router, tags=["ops"])
+```
+
+```bash
+# Environment
+DEVDIAG_BASE=https://devdiag-http.example.run.app
+DEVDIAG_JWT=
+DEVDIAG_ALLOW_HOSTS=.ledger-mind.org,app.ledger-mind.org
+```
+
+```typescript
+// Frontend calls backend proxy (no JWT needed)
+const res = await fetch('/ops/diag', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({url: 'https://app.ledger-mind.org', preset: 'app'}),
+});
+```
+
+Full documentation:
+- **HTTP Server**: [apps/devdiag-http/README.md](apps/devdiag-http/README.md)
+- **Backend Proxy**: [apps/backend/app/routes/README.md](apps/backend/app/routes/README.md)
 
 ## Deployment
 
@@ -699,6 +732,53 @@ Future enhancements to consider:
 
 See `TODO.md` for full roadmap with effort estimates.
 
+## Usage Patterns
+
+### MCP (stdio) for Dev/IDE & Pure-CLI CI
+
+Use **`scripts/mcp_probe.py`** to talk directly to `mcp-devdiag --stdio` without the HTTP server:
+
+```bash
+# Run probe via MCP stdio
+python scripts/mcp_probe.py --url https://www.leoklemet.com --preset app --pretty
+
+# CI usage with policy gate
+python scripts/mcp_probe.py --url https://app.example.com --preset app \
+  --max-problems 25 > diag.json
+
+# Customize CLI binary and timeout
+export MCP_DEV_DIAG_BIN="mcp-devdiag"
+export MCP_PROBE_TIMEOUT_S=240
+python scripts/mcp_probe.py --url https://example.com --preset full
+```
+
+**Environment Variables:**
+- `MCP_DEV_DIAG_BIN` - CLI binary name (default: `mcp-devdiag`)
+- `MCP_PROBE_TIMEOUT_S` - Timeout in seconds (default: `180`)
+
+**Exit Codes:**
+- `0` - Success
+- `1` - Error (CLI not found, invalid response)
+- `2` - Too many problems (when `--max-problems` threshold exceeded)
+
+**VS Code Task Integration:**
+
+See `.vscode/tasks.json` for quick access via `Tasks: Run Task` menu.
+
+**Full documentation:** [docs/MCP_STDIO.md](docs/MCP_STDIO.md)
+
+### HTTP for Apps/Teams
+
+Use the **HTTP server** (`apps/devdiag-http`) when you need:
+- JWT authentication (JWKS)
+- Rate limiting (default: 2 RPS)
+- SSRF protection
+- Host allowlisting
+- Multi-tenant isolation
+- Backend proxy pattern (hide JWT from frontend)
+
+See [HTTP Server](#http-server) section above.
+
 ## Compatibility
 
 | Area                 | Default | Notes                                   |
@@ -707,7 +787,7 @@ See `TODO.md` for full roadmap with effort estimates.
 | Auth                 | JWKS    | RS256; aud = `mcp-devdiag`              |
 | Prod capture         | Off     | No bodies ever; headers redacted        |
 | Probes               | CSP/DOM | Degrades gracefully in HTTP-only        |
-| CI                   | Quick   | `/mcp/diag/quickcheck` HTTP-only        |
+| CI                   | Quick   | `/mcp/diag/quickcheck` or `scripts/mcp_probe.py` |
 
 ## Privacy & Data Handling
 

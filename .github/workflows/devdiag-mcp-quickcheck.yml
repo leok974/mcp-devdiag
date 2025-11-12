@@ -1,0 +1,23 @@
+name: DevDiag Quickcheck (MCP over stdio)
+on:
+  pull_request:
+    branches: [ "main" ]
+jobs:
+  mcp-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install mcp server deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install "mcp-devdiag[playwright,export]==0.2.1" jq
+      - name: Run MCP probe
+        run: |
+          python scripts/mcp_probe.py --url https://www.leoklemet.com --preset app --pretty > diag.json
+          echo "### Top problem codes" >> $GITHUB_STEP_SUMMARY
+          jq -r '.problems[]?.code' diag.json | sort | uniq -c | sort -nr | head -20 | sed 's/^/* /' >> $GITHUB_STEP_SUMMARY || true
+      - name: Policy gate (adjust threshold)
+        run: |
+          jq -e '(.problems // [] | length) < 25' diag.json

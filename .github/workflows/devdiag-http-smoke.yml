@@ -1,0 +1,58 @@
+name: DevDiag HTTP — Smoke
+on:
+  workflow_dispatch: {}
+  push:
+    paths: 
+      - "apps/devdiag-http/**"
+      - "docker-compose.devdiag.yml"
+      - ".github/workflows/devdiag-http-smoke.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & run (local)
+        run: |
+          docker compose -f docker-compose.devdiag.yml up -d --build
+          for i in {1..20}; do curl -fsS http://127.0.0.1:8080/healthz && break || sleep 1; done
+          curl -fsS http://127.0.0.1:8080/selfcheck | tee selfcheck.json
+          echo "### 🔍 Selfcheck" >> $GITHUB_STEP_SUMMARY
+          jq -r '.|to_entries[]|("* \(.key): \(.value)")' selfcheck.json >> $GITHUB_STEP_SUMMARY
+
+      - name: Check readiness
+        run: |
+          curl -fsS http://127.0.0.1:8080/ready | tee ready.json
+          echo "### ✅ Readiness" >> $GITHUB_STEP_SUMMARY
+          jq -r '.|to_entries[]|("* \(.key): \(.value)")' ready.json >> $GITHUB_STEP_SUMMARY
+
+      - name: Probe (allowlisted host)
+        continue-on-error: true
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8080/diag/run \
+            -H 'content-type: application/json' \
+            -d '{"url":"https://app.ledger-mind.org","preset":"app"}' | tee diag.json
+          echo "### 📊 Top Problem Codes" >> $GITHUB_STEP_SUMMARY
+          jq -r '.result.problems[]?.code' diag.json | sort | uniq -c | sort -nr | head -20 | sed 's/^/* /' >> $GITHUB_STEP_SUMMARY || echo "No problems found" >> $GITHUB_STEP_SUMMARY
+
+      - name: Test allowlist rejection
+        run: |
+          # Should fail with 422 (not in allowlist)
+          if curl -fsS -X POST http://127.0.0.1:8080/diag/run \
+            -H 'content-type: application/json' \
+            -d '{"url":"https://evil.com","preset":"app"}'; then
+            echo "❌ Allowlist failed - evil.com should be rejected"
+            exit 1
+          else
+            echo "✅ Allowlist working - evil.com rejected as expected"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devdiag-smoke
+          path: |
+            selfcheck.json
+            ready.json
+            diag.json

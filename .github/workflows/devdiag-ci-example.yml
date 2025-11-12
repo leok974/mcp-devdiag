@@ -1,0 +1,97 @@
+name: DevDiag CI Integration
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'URL to test'
+        required: true
+        default: 'https://app.ledger-mind.org'
+      preset:
+        description: 'Preset to use'
+        required: true
+        default: 'app'
+        type: choice
+        options:
+          - chat
+          - embed
+          - app
+          - full
+
+jobs:
+  smoke_test:
+    name: DevDiag Smoke Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success'
+    
+    env:
+      DEVDIAG_BASE: https://devdiag-http.example.run.app
+      DEVDIAG_JWT: ${{ secrets.DEVDIAG_JWT }}
+      TARGET_URL: ${{ github.event.inputs.target_url || github.event.deployment_status.target_url }}
+      PRESET: ${{ github.event.inputs.preset || 'app' }}
+    
+    steps:
+      - name: Wait for deployment
+        if: github.event_name == 'deployment_status'
+        run: sleep 30
+      
+      - name: Probe with DevDiag
+        id: diag
+        run: |
+          body=$(jq -nc \
+            --arg url "$TARGET_URL" \
+            --arg preset "$PRESET" \
+            '{"url": $url, "preset": $preset, "tenant": "ledgermind"}')
+          
+          hdr=(-H "content-type: application/json")
+          [ -n "$DEVDIAG_JWT" ] && hdr+=(-H "authorization: Bearer $DEVDIAG_JWT")
+          
+          curl -fsS -X POST "$DEVDIAG_BASE/diag/run" "${hdr[@]}" -d "$body" > diag.json
+          
+          # Extract metrics
+          problem_count=$(jq -r '.result.problems // [] | length' diag.json)
+          score=$(jq -r '.result.score // 0' diag.json)
+          
+          echo "problem_count=$problem_count" >> "$GITHUB_OUTPUT"
+          echo "score=$score" >> "$GITHUB_OUTPUT"
+      
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## 🔍 DevDiag Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**URL**: $TARGET_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Preset**: $PRESET" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Score**: ${{ steps.diag.outputs.score }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Problems**: ${{ steps.diag.outputs.problem_count }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          
+          if [ -f diag.json ]; then
+            echo "### 🔴 Top Problem Codes" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.result.problems[]?.code' diag.json \
+              | sort | uniq -c | sort -nr | head -20 \
+              | sed "s/^/* /" >> "$GITHUB_STEP_SUMMARY"
+            
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### ⚠️ Problem Breakdown by Severity" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.result.problems[]?.severity' diag.json \
+              | sort | uniq -c | sort -nr \
+              | sed "s/^/* /" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      
+      - name: Policy gate
+        run: |
+          # Fail if more than 25 problems
+          jq -e '(.result.problems // [] | length) < 25' diag.json || {
+            echo "❌ Too many problems found (threshold: 25)"
+            exit 1
+          }
+      
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devdiag-results
+          path: diag.json
+          retention-days: 30

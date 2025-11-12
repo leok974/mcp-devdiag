@@ -32,6 +32,18 @@ else
 fi
 echo ""
 
+# Test 2.5: Selfcheck (CLI availability)
+echo "2.5️⃣ Testing GET /selfcheck..."
+SELFCHECK=$(curl -sf "$BASE/selfcheck")
+echo "$SELFCHECK" | jq .
+if echo "$SELFCHECK" | jq -e '.ok == true' > /dev/null; then
+    echo "✅ Selfcheck passed - CLI available"
+else
+    echo "⚠️ Selfcheck failed - CLI may not be installed"
+    echo "$SELFCHECK"
+fi
+echo ""
+
 # Test 3: Metrics endpoint
 echo "3️⃣ Testing GET /metrics..."
 METRICS=$(curl -sf "$BASE/metrics")

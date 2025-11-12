@@ -36,9 +36,33 @@ Environment variables:
 - `RATE_LIMIT_RPS`: Requests per second limit (default: 2.0)
 - `ALLOW_PRIVATE_IP`: Allow private/loopback IPs (default: 0, set 1 for local testing)
 - `ALLOWED_ORIGINS`: CORS origins (comma-separated, default: `http://127.0.0.1:19010,http://localhost:19010`)
+- `ALLOW_TARGET_HOSTS`: Server-side allowlist for target URLs (comma-separated, supports exact, `.domain.com`, and `pr-*.domain.com` patterns)
 - `DEVDIAG_CLI`: CLI binary name (default: `mcp-devdiag`)
 - `DEVDIAG_TIMEOUT_S`: CLI timeout in seconds (default: 180)
 - `MAX_CONCURRENT`: Maximum concurrent diagnostic runs (default: 2)
+
+### Target Host Allowlist
+
+`ALLOW_TARGET_HOSTS` provides server-side validation to prevent arbitrary URL scanning:
+
+```bash
+# Exact host match
+ALLOW_TARGET_HOSTS=app.ledger-mind.org
+
+# Subdomain wildcard (leading dot allows subdomains + apex)
+ALLOW_TARGET_HOSTS=.ledger-mind.org
+# ✅ app.ledger-mind.org
+# ✅ ledger-mind.org  
+# ✅ staging.ledger-mind.org
+
+# Glob patterns (pr-*.example.com)
+ALLOW_TARGET_HOSTS=pr-*.ledger-mind.org
+
+# Mixed
+ALLOW_TARGET_HOSTS=.ledger-mind.org,app.example.com,pr-*.example.com
+```
+
+**Best practice**: Use `.ledger-mind.org` for dynamic preview environments.
 
 ## API Endpoints
 
@@ -52,6 +76,47 @@ Health check endpoint (also supports HEAD).
 
 ### `HEAD /healthz`
 Lightweight health check (no body).
+
+### `GET /selfcheck`
+Quick diagnostics for ops: confirms CLI presence and prints version.
+
+**Response (success):**
+```json
+{"ok": true, "cli": "mcp-devdiag", "version": "0.2.1"}
+```
+
+**Response (CLI not found):**
+```json
+{"ok": false, "cli": "mcp-devdiag", "message": "CLI not found in PATH"}
+```
+
+**Use case**: If you see 502 errors from `/diag/run`, check `/selfcheck` to verify the CLI is installed and accessible.
+
+### `GET /ready`
+Readiness probe combining CLI availability + allowlist + JWKS checks. Use for K8s readinessProbe or load balancer health checks.
+
+**Response (ready):**
+```json
+{"ok": true}
+```
+
+**Response (not ready):**
+```json
+{"ok": false, "reason": "cli_missing", "cli": "mcp-devdiag"}
+{"ok": false, "reason": "allowlist_empty"}
+{"ok": false, "reason": "jwks_unreachable", "error": "..."}
+```
+
+**Kubernetes readinessProbe example:**
+```yaml
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+```
 
 ### `GET /metrics`
 Prometheus-compatible metrics endpoint.

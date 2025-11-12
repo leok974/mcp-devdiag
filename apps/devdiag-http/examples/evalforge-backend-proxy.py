@@ -1,5 +1,19 @@
 """
-EvalForge backend proxy for DevDiag HTTP API
+EvalForge backend proxy for DevDiag HTTP API - Simple Example
+
+This is a BASIC example showing the minimal backend proxy pattern.
+For production use, see the PRODUCTION-READY version at:
+  apps/backend/app/routes/devdiag_proxy.py
+
+Production version includes:
+- Host allowlist validation (prevents arbitrary URL scanning)
+- Retry logic with jitter backoff (3 attempts for 429/503/504)
+- Trace header propagation (x-request-id, x-b3-traceid, traceparent)
+- Response size limits (caps at 2MB)
+- Feature toggle (DEVDIAG_ENABLED=0 returns 404)
+- Connection pooling (max 10, keepalive 5)
+- Tenant field support
+- Better error handling
 
 This backend route hides JWT tokens from the frontend and provides
 a clean internal API for running diagnostics.

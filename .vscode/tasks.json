@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "DevDiag (MCP): Probe homepage",
+      "type": "shell",
+      "command": "python scripts/mcp_probe.py --url https://www.leoklemet.com --preset app --pretty",
+      "problemMatcher": []
+    }
+  ]
+}
